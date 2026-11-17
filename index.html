@@ -79,7 +79,7 @@
     --calcite-action-background-color: var(--app-ink); --calcite-action-background-color-hover: #3d3d3d; --calcite-action-background-color-press: #000;
     --calcite-action-text-color: #fff; --calcite-action-text-color-press: #fff; --calcite-icon-color: #fff;
   }
-  .school-label { padding: 1px 6px; color: #d9480f; font: 700 11px var(--app-font); background: rgb(255 255 255 / 92%); border: 1px solid #f76707; border-radius: 2px; white-space: nowrap; pointer-events: none; }
+  #map.labels-off .mk-label { display: none; }   /* 축소하면 마커 이름 숨김 */
   .me-dot { display: block; width: 14px; height: 14px; background: #007ac2; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 6px rgb(0 122 194 / 20%), 0 1px 3px rgb(0 0 0 / 40%); }
   /* 지도 마커: 아이콘 + 아래 레이블 */
   .mk { position: relative; display: block; cursor: pointer; }
@@ -677,14 +677,9 @@ const schoolTiles = new Set();       // 받아 둔 격자 (0.05° 단위)
 let schoolSeq = 0;
 function drawSchool(z) {
   z.shapes = z.parts.filter(r => r.length > 2).map(r => new kakao.maps.Polygon({ map, path: r.map(([la, ln]) => new kakao.maps.LatLng(la, ln)), zIndex: 0, ...SCHOOL_STYLE }));
-  const big = z.parts.reduce((a, r) => r.length > a.length ? r : a, []);
-  if (big.length && !eduLoaded.has(z.edu)) {
-    const lat = big.reduce((s, p) => s + p[0], 0) / big.length, lng = big.reduce((s, p) => s + p[1], 0) / big.length;
-    z.label = new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(lat, lng), zIndex: 2, content: `<span class="school-label">${esc(z.name.replace(/통학구역$/, ''))}</span>` });
-  }
 }
 function setSchoolVisible(on) {
-  for (const z of schools.values()) { z.shapes?.forEach(s => s.setMap(on ? map : null)); z.label?.setMap(on ? map : null); }
+  for (const z of schools.values()) z.shapes?.forEach(s => s.setMap(on ? map : null));
   for (const s of schoolPts.values()) { if (on) drawSchoolPoint(s); else s.marker?.setMap(null); }
 }
 async function loadSchoolZones() {
@@ -793,7 +788,6 @@ async function loadSchoolPoints(edu, up) {
   }
   eduLoaded.add(edu);
   if (!list.length) { stdEmpty = true; console.warn('[학교 위치] 표준데이터 결과 없음', { edu, up, schoolDiag }); }
-  if (list.length) for (const z of schools.values()) if (z.edu === edu) { z.label?.setMap(null); z.label = null; }   // 이름은 학교 위치에 표시
   for (const s of list) if (!schoolPts.has(s.id)) {
     schoolPts.set(s.id, s);
     if (prefs.school) drawSchoolPoint(s);
@@ -1242,6 +1236,9 @@ async function initMap() {
   const [lat, lng, level] = prefs.view || [37.27, 127.1, 7];
   map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(lat, lng), level });
   if (!prefs.view && !prefs.dong) locateMe({ quiet: true });
+  const LABEL_MAX_LEVEL = 6;   // 이보다 축소하면 마커 이름을 숨김 (아이콘은 유지)
+  const syncLabels = () => $('#map').classList.toggle('labels-off', map.getLevel() > LABEL_MAX_LEVEL);
+  kakao.maps.event.addListener(map, 'zoom_changed', syncLabels); syncLabels();
   $('#myLocBtn').addEventListener('click', () => locateMe());
   $('#zoomIn').addEventListener('click', () => map.setLevel(map.getLevel() - 1, { animate: true }));
   $('#zoomOut').addEventListener('click', () => map.setLevel(map.getLevel() + 1, { animate: true }));
