@@ -34,6 +34,7 @@ https://developers.kakao.com 에 로그인한 뒤 **앱**에서 사용할 앱을
 - 국토교통부_(TAGO)_버스정류소정보 (`BusSttnInfoInqireService`): 경기도 밖 지역 버스 정류장
 - 경기도_버스노선 조회 (`busrouteservice`): 노선 경로 그리기 (경기도)
 - 국토교통부_(TAGO)_버스노선정보 (`BusRouteInfoInqireService`): 노선 경로 그리기 (경기도 밖)
+- 전국초중등학교위치표준데이터 (`tn_pubr_public_elesch_mskul_lc_api`): 학군 켰을 때 초등학교 위치
 
 ## 브이월드 (동 경계)
 
