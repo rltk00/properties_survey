@@ -700,14 +700,15 @@ async function loadSchoolZones() {
   try {
     let n = 0;
     await pool(tiles.map(([x, y]) => async () => {
-      const ck = `desch2|${x},${y}`;
+      const ck = `desch3|${x},${y}`;
       let zones = await idb.get(ck);
       if (!zones) {
         const box = `BOX(${(x * T).toFixed(2)},${(y * T).toFixed(2)},${((x + 1) * T).toFixed(2)},${((y + 1) * T).toFixed(2)})`;
         zones = (await vworld('LT_C_DESCH', `geomFilter=${box}`, true)).map(f => {
           const p = f.properties || {}, g = f.geometry || {};
           const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-          return { id: String(p.hakgudo_id || p.objectid), name: p.hakgudo_nm || '', edu: String(p.edu_cd || ''), up: String(p.edu_up_cd || ''),
+          const pv = k => p[k] ?? p[k.toUpperCase()] ?? '';
+          return { id: String(pv('hakgudo_id') || pv('objectid')), name: pv('hakgudo_nm'), edu: String(pv('edu_cd')), up: String(pv('edu_up_cd')),
                    parts: polys.map(pl => simplifyRing(pl[0])) };
         });
         idb.set(ck, zones);
@@ -727,14 +728,40 @@ async function loadSchoolPointsForZones() {   // 학교 위치: 통학구역의 
   try {
     const offices = new Map();
     for (const z of schools.values()) if (z.edu && !eduLoaded.has(z.edu)) offices.set(z.edu, z.up);
+    if (schools.size && ![...schools.values()].some(z => z.edu)) stdEmpty = true;   // 통학구역에 교육지원청 코드가 없음
     for (const [edu, up] of offices) await loadSchoolPoints(edu, up);
+    if (stdEmpty) await loadKakaoSchools();          // 표준데이터로 못 찾으면 카카오 장소 검색으로 대신 표시
   } catch (e) { showError(e); }
   finally { pointsBusy = false; }
+}
+/* 대체: 카카오 장소 검색 (학교 분류, '초등학교'로 끝나는 곳만), 화면 격자 단위 */
+const kakaoSchoolTiles = new Set();
+async function loadKakaoSchools() {
+  const bd = map.getBounds(), sw = bd.getSouthWest(), ne = bd.getNorthEast(), T = 0.05;
+  const tiles = [];
+  for (let y = Math.floor(sw.getLat() / T); y <= Math.floor(ne.getLat() / T); y++)
+    for (let x = Math.floor(sw.getLng() / T); x <= Math.floor(ne.getLng() / T); x++)
+      if (!kakaoSchoolTiles.has(`${x},${y}`)) tiles.push([x, y]);
+  for (const [x, y] of tiles) {
+    const bounds = new kakao.maps.LatLngBounds(new kakao.maps.LatLng(y * T, x * T), new kakao.maps.LatLng((y + 1) * T, (x + 1) * T));
+    for (let page = 1; page <= 3; page++) {
+      const { res, more } = await new Promise(ok => new kakao.maps.services.Places().keywordSearch('초등학교', (r, st, pg) =>
+        ok({ res: st === kakao.maps.services.Status.OK ? r : [], more: !!pg?.hasNextPage }), { bounds, category_group_code: 'SC4', page }));
+      for (const p of res) if (/초등학교$/.test(p.place_name) && !schoolPts.has('k' + p.id)) {
+        const s = { id: 'k' + p.id, name: p.place_name, lat: +p.y, lng: +p.x };
+        schoolPts.set(s.id, s); if (prefs.school) drawSchoolPoint(s);
+      }
+      if (!more) break;
+    }
+    kakaoSchoolTiles.add(`${x},${y}`);
+  }
+  if (tiles.length) status(`학교 위치는 카카오 장소 검색으로 표시했습니다 (표준데이터 응답: ${schoolDiag || '조회 안 됨'}).`);
 }
 
 /* 학교 위치: 공공데이터포털 전국초중등학교위치표준데이터 (교육지원청 단위, 초등학교만) */
 const SCHOOL_API = 'https://api.data.go.kr/openapi/tn_pubr_public_elesch_mskul_lc_api';
 const eduLoaded = new Set(), schoolPts = new Map();   // schoolId → {name, lat, lng, marker}
+let schoolDiag = '', stdEmpty = false;
 const SCHOOL_SVG = '<svg width="22" height="22" viewBox="0 0 22 22"><rect x="1" y="1" width="20" height="20" rx="5" fill="#f76707" stroke="#fff" stroke-width="2"/><path d="M11 5.5l-6 3 6 3 4.6-2.3v3.3h1.2V8.5zM7.4 11.4v2.8c0 1 1.6 2 3.6 2s3.6-1 3.6-2v-2.8L11 13.2z" fill="#fff"/></svg>';
 async function schoolQuery(params) {
   const items = [];
@@ -744,6 +771,7 @@ async function schoolQuery(params) {
     if (r.status === 401 || r.status === 403) throw new ApiError('학교 위치 API 키가 거부됐습니다. 공공데이터포털에서 "전국초중등학교위치표준데이터" 활용신청을 확인하세요.');
     if (!r.ok || !text.startsWith('{')) throw new ApiError(`학교 위치 API 오류 [HTTP ${r.status}] ${text.slice(0, 120)}`);
     const res = JSON.parse(text).response || {}, code = String(res.header?.resultCode ?? '00');
+    schoolDiag = `${code} ${res.header?.resultMsg || ''} · 전체 ${res.body?.totalCount ?? '?'}건`;
     if (code === '03') break;                        // NODATA
     if (code !== '00') throw new ApiError(`학교 위치 API 오류 ${code}: ${res.header?.resultMsg}`);
     const batch = asList(res.body?.items?.item ?? res.body?.items);
@@ -764,6 +792,7 @@ async function loadSchoolPoints(edu, up) {
     if (list.length) idb.set(ck, list);
   }
   eduLoaded.add(edu);
+  if (!list.length) { stdEmpty = true; console.warn('[학교 위치] 표준데이터 결과 없음', { edu, up, schoolDiag }); }
   if (list.length) for (const z of schools.values()) if (z.edu === edu) { z.label?.setMap(null); z.label = null; }   // 이름은 학교 위치에 표시
   for (const s of list) if (!schoolPts.has(s.id)) {
     schoolPts.set(s.id, s);
