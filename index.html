@@ -217,7 +217,7 @@ const APIS = [
 const PY = 400 / 121; // 1평 = 3.3058㎡
 const TRADE_KO = { SALE:'매매', JEONSE:'전세', WOLSE:'월세' };
 const KIND_KO = { APT:'아파트', OPST:'오피스텔' };
-const DONG_STYLE = { strokeColor: '#1f1f1f', strokeOpacity: 0.9, strokeWeight: 2, fillColor: '#1f1f1f', fillOpacity: 0.06 };
+const DONG_STYLE = { strokeColor: '#007ac2', strokeOpacity: 0.95, strokeWeight: 2.5, fillColor: '#007ac2', fillOpacity: 0.12 };
 
 /* ───────── 저장소 ───────── */
 const store = {
@@ -528,7 +528,16 @@ function inRing(lat, lng, ring) {
   }
   return inside;
 }
-const inDongArea = (d, lat, lng) => d?.parts.some(r => inRing(lat, lng, r));
+function bboxOf(d) {
+  if (!d.bbox) { let a = 90, b = 180, c = -90, e = -180; for (const r of d.parts) for (const [la, ln] of r) { a = Math.min(a, la); b = Math.min(b, ln); c = Math.max(c, la); e = Math.max(e, ln); } d.bbox = [a, b, c, e]; }
+  return d.bbox;
+}
+const inDongArea = (d, lat, lng) => {
+  if (!d) return false;
+  const [a, b, c, e] = bboxOf(d);
+  return lat >= a && lat <= c && lng >= b && lng <= e && d.parts.some(r => inRing(lat, lng, r));
+};
+const localDongAt = (lat, lng) => [hoverDong, S.dong].find(d => inDongArea(d, lat, lng)) || [...S.dongs.values()].find(d => inDongArea(d, lat, lng)) || null;
 const dongReq = new Map();
 function fetchDong(code) {
   if (S.dongs.has(code)) return Promise.resolve(S.dongs.get(code));
@@ -547,11 +556,12 @@ function fetchDong(code) {
   return dongReq.get(code);
 }
 async function dongAt(lat, lng) {
-  const cur = [hoverDong, S.dong].find(d => inDongArea(d, lat, lng));
-  if (cur) return cur;
+  const local = localDongAt(lat, lng);                // 받아 둔 경계 안이면 네트워크 없이 바로
+  if (local) return local;
   const r = await coordRegion(lat, lng);
   if (!r) return null;
   if (!S.sggs.has(r.sgg) && r.sggName) S.sggs.set(r.sgg, { code: r.sgg, name: r.sggName, full: `${r.sido} ${r.sggName}` });
+  ensureSgg(r.sgg).catch(() => {});                   // 같은 구의 나머지 동 경계는 한 번에 미리 받기
   return fetchDong(r.emd);
 }
 function showHover(name, latLng) {
@@ -559,34 +569,44 @@ function showHover(name, latLng) {
   hoverLabel.setContent(`<span class="hover-tip">${esc(name)}</span>`);
   hoverLabel.setPosition(latLng); hoverLabel.setMap(map);
 }
-let hoverDong = null, hoverTimer = null, hoverSeq = 0;
-function onMouseMove(latLng) {
-  clearTimeout(hoverTimer);
-  const lat = latLng.getLat(), lng = latLng.getLng();
-  if (hoverDong && inDongArea(hoverDong, lat, lng)) { showHover(hoverDong.name, latLng); return; }
-  hoverTimer = setTimeout(async () => {
-    if (!keys().vworld) return;
-    const seq = ++hoverSeq;
-    try {
-      const d = await dongAt(lat, lng);
-      if (seq !== hoverSeq) return;
-      hoverDong = d;
-      setOutline('hover', d && d.code !== S.dong?.code ? d : null);
-      if (d) showHover(d.name, latLng); else hoverLabel?.setMap(null);
-    } catch (e) { showError(e); }
-  }, 120);
+let hoverDong = null, hoverSeq = 0, hoverBusy = false, hoverNext = null;
+function setHover(d, latLng) {
+  if (d !== hoverDong) { hoverDong = d; setOutline('hover', d && d.code !== S.dong?.code ? d : null); }
+  if (d) showHover(d.name, latLng); else hoverLabel?.setMap(null);
 }
-function clearHover() { clearTimeout(hoverTimer); hoverSeq++; hoverDong = null; setOutline('hover', null); hoverLabel?.setMap(null); }
+function onMouseMove(latLng) {
+  const local = localDongAt(latLng.getLat(), latLng.getLng());
+  if (local) { hoverSeq++; hoverNext = null; setHover(local, latLng); return; }   // 즉시
+  if (!keys().vworld) return;
+  hoverNext = latLng;                      // 처음 가는 곳: 조회 중이면 끝난 뒤 마지막 위치만 다시 조회
+  if (!hoverBusy) hoverLookup();
+}
+async function hoverLookup() {
+  hoverBusy = true;
+  while (hoverNext) {
+    const latLng = hoverNext, seq = ++hoverSeq; hoverNext = null;
+    try {
+      const d = await dongAt(latLng.getLat(), latLng.getLng());
+      if (seq === hoverSeq) setHover(d, latLng);
+    } catch (e) { showError(e); }
+  }
+  hoverBusy = false;
+}
+function clearHover() { hoverSeq++; hoverNext = null; hoverDong = null; setOutline('hover', null); hoverLabel?.setMap(null); }
 async function onMapClick(latLng) {
   try {
     const d = await dongAt(latLng.getLat(), latLng.getLng());
     if (d && d.code !== S.dong?.code) selectDong(d.code);
   } catch (e) { showError(e); }
 }
-async function ensureSgg(sgg) {
-  const ds = await fetchDongs(sgg);
-  for (const d of ds) if (!S.dongs.has(d.code)) S.dongs.set(d.code, d);
-  return ds;
+const sggReq = new Map();
+function ensureSgg(sgg) {               // 시군구 전체 동 경계 (한 번만 요청)
+  if (!sggReq.has(sgg)) {
+    const p = fetchDongs(sgg).then(ds => { for (const d of ds) if (!S.dongs.has(d.code)) S.dongs.set(d.code, d); return ds; });
+    p.catch(() => sggReq.delete(sgg));
+    sggReq.set(sgg, p);
+  }
+  return sggReq.get(sgg);
 }
 let idleTimer = null;
 function onIdle() { const c = map.getCenter(); prefs.view = [c.getLat(), c.getLng(), map.getLevel()]; savePrefs(); }
@@ -625,7 +645,7 @@ async function selectDong(code, { fit = true } = {}) {
   try { d = await fetchDong(code); } catch (e) { return showError(e); }
   if (!d || token !== selToken) return;
   S.dong = d; S.sel = null;
-  setOutline('sel', d); setOutline('hover', null);
+  setOutline('sel', d); setOutline('hover', null); hoverDong = null;
   prefs.dong = code; savePrefs();
   closeDetail();
   updateRegionUI();
