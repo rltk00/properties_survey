@@ -75,6 +75,10 @@
   .map-widget { position: absolute; right: 12px; z-index: 10; }
   .map-widget.top { top: 12px; }
   .map-widget.bottom { bottom: 24px; }
+  .map-widget calcite-action[active] {
+    --calcite-action-background-color: var(--app-ink); --calcite-action-background-color-hover: #3d3d3d; --calcite-action-background-color-press: #000;
+    --calcite-action-text-color: #fff; --calcite-action-text-color-press: #fff; --calcite-icon-color: #fff;
+  }
   .school-label { padding: 1px 6px; color: #d9480f; font: 700 11px var(--app-font); background: rgb(255 255 255 / 92%); border: 1px solid #f76707; border-radius: 2px; white-space: nowrap; pointer-events: none; }
   .me-dot { display: block; width: 14px; height: 14px; background: #007ac2; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 6px rgb(0 122 194 / 20%), 0 1px 3px rgb(0 0 0 / 40%); }
   /* 지도 마커: 아이콘 + 아래 레이블 */
