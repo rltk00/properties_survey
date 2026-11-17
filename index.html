@@ -70,8 +70,12 @@
   .pin { display: inline-block; padding: 3px 8px; color: #fff; font: 600 12px var(--app-font); white-space: nowrap; background: var(--app-ink); border: 2px solid #fff; border-radius: 4px; box-shadow: 0 1px 4px rgb(0 0 0 / 30%); cursor: pointer; }
   .pin.OPST { background: var(--opst); }
   .pin.sel { color: var(--app-ink); background: #ffd43b; }
-  .lm { display: inline-block; padding: 3px 8px; color: var(--app-ink); font: 700 11px var(--app-font); white-space: nowrap; background: #fff; border: 2px solid var(--app-ink); border-radius: 4px; }
-  .hover-tip { display: inline-block; padding: 3px 8px; color: #fff; font: 600 12px var(--app-font); background: rgb(31 31 31 / 88%); border-radius: 4px; white-space: nowrap; }
+  .hover-tip { display: inline-block; padding: 3px 8px; color: #000; font: 600 12px var(--app-font); background: #fff; border: 1px solid #000; border-radius: 2px; white-space: nowrap; }
+  /* 지도 마커: 아이콘 + 아래 레이블 */
+  .mk { position: relative; display: block; cursor: pointer; }
+  .mk svg { display: block; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 35%)); }
+  .mk-label { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 1px; color: #1f1f1f; font: 700 12px var(--app-font); white-space: nowrap;
+              text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 3px #fff; pointer-events: none; }
   .stopdot { display: block; width: 9px; height: 9px; background: #fff; border: 2px solid var(--route, #d6336c); border-radius: 50%; }
 
   /* 상세 */
@@ -753,11 +757,28 @@ async function ensureLandmarks() {      // 좌표가 없는 장소만 위치 확
   if (changed) { savePlaces(); saveGeo(); renderPlaces(); }
   drawLandmarks();
 }
-function drawLandmarks() {
+const PIN_SVG = '<svg width="26" height="34" viewBox="0 0 26 34"><path d="M13 1C6.4 1 1 6.2 1 12.7 1 21.4 13 33 13 33s12-11.6 12-20.3C25 6.2 19.6 1 13 1z" fill="#e5484d" stroke="#fff" stroke-width="2"/><circle cx="13" cy="12.5" r="4.5" fill="#fff"/></svg>';
+const FAV_SVG = '<svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12.5" fill="#1aa260" stroke="#fff" stroke-width="2"/><path d="M14 6.6l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5-3.6-3.5 5-.7z" fill="#fff"/></svg>';
+function marker(svg, label, onClick) {
+  const el = document.createElement('div');
+  el.className = 'mk'; el.title = label;
+  el.innerHTML = `${svg}<span class="mk-label">${esc(label)}</span>`;
+  if (onClick) el.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+  return el;
+}
+function drawLandmarks() {        // 내 장소: 핀 + 레이블 (핀 끝이 위치)
   if (!map) return;
   lmOverlays.forEach(o => o.setMap(null));
   lmOverlays = places.filter(l => l.lat != null).map(l => new kakao.maps.CustomOverlay({
-    map, position: new kakao.maps.LatLng(l.lat, l.lng), yAnchor: 1, zIndex: 5, content: `<span class="lm">${esc(l.name)}</span>`,
+    map, position: new kakao.maps.LatLng(l.lat, l.lng), yAnchor: 1, zIndex: 5, content: marker(PIN_SVG, l.name),
+  }));
+}
+let favOverlays = [];
+function drawFavs() {             // 즐겨찾기: 원 안 별표 + 레이블 (원 중심이 위치)
+  if (!map) return;
+  favOverlays.forEach(o => o.setMap(null));
+  favOverlays = favs.filter(f => f.lat != null).map(f => new kakao.maps.CustomOverlay({
+    map, position: new kakao.maps.LatLng(f.lat, f.lng), yAnchor: 0.5, zIndex: 6, content: marker(FAV_SVG, f.name, () => openFav(f)),
   }));
 }
 const distances = b => places.map(l => ({ key: l.id, name: l.name, d: (b.lat != null && l.lat != null) ? haversine(b, l) : null }));
@@ -909,7 +930,7 @@ function toggleFav(b) {
   if (isFav(b.id)) favs = favs.filter(f => f.id !== b.id);
   else favs.unshift({ id: b.id, name: b.name, kind: b.kind, sgg: b.sgg, umd: b.umd, jibun: b.jibun, dong: S.dong?.code,
                       address: `${sggFull(b.sgg)} ${b.umd} ${b.jibun}`.trim(), lat: b.lat, lng: b.lng });
-  saveFavs();
+  saveFavs(); drawFavs();
   const on = isFav(b.id), btn = $('#favBtn');
   if (btn) { btn.icon = on ? 'star-f' : 'star'; btn.text = on ? '즐겨찾기 해제' : '즐겨찾기 추가'; btn.classList.toggle('fav-mark', on); }
   renderFavs(); render();
@@ -1039,6 +1060,7 @@ async function initMap() {
   kakao.maps.event.addListener(map, 'click', e => onMapClick(e.latLng));
   $('#map').addEventListener('mouseleave', clearHover);
   ensureLandmarks().catch(() => {});
+  drawFavs();
   if (prefs.dong) selectDong(prefs.dong, { fit: false });   // 마지막으로 보던 동 다시 열기
 }
 
@@ -1105,7 +1127,7 @@ async function initMap() {
     const card = e.target.closest('.card'); if (!card) return;
     const f = favs[+card.dataset.i];
     if (e.target.closest('calcite-action[data-act="del"]')) {
-      favs = favs.filter(x => x !== f); saveFavs(); renderFavs(); render();
+      favs = favs.filter(x => x !== f); saveFavs(); renderFavs(); drawFavs(); render();
       const b = S.buildings.get(S.sel); if (b?.id === f.id) showDetail(b);
       return;
     }
