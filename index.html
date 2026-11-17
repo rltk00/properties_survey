@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>실거래 지도</title>
+<meta name="description" content="용인·수원·오산 아파트·오피스텔 실거래가 지도">
+<style>
+  :root { --bg:#f6f7f9; --panel:#fff; --text:#1d2433; --muted:#6b7385; --line:#e3e6ec; --apt:#2f6fed; --opst:#e8772e; --sel:#111827; --ok:#10b981; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; font:14px/1.45 -apple-system,"Segoe UI","Malgun Gothic",sans-serif; color:var(--text); background:var(--bg); }
+  #app { display:grid; grid-template-columns:380px 1fr; height:100vh; }
+  aside { background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; }
+  .mapwrap { position:relative; }
+  #map { position:absolute; inset:0; }
+  .sec { padding:14px 16px; border-bottom:1px solid var(--line); }
+  h1 { font-size:16px; margin:0 0 2px; }
+  .muted { color:var(--muted); font-size:12px; }
+  label.f { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  select, input { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font:inherit; background:#fff; color:var(--text); }
+  .row { display:flex; gap:6px; align-items:center; } .row > * { flex:1; }
+  .seg { display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .seg button { flex:1; border:0; background:#fff; padding:6px 0; font:inherit; cursor:pointer; color:var(--text); }
+  .seg button + button { border-left:1px solid var(--line); }
+  .seg button.on { background:var(--sel); color:#fff; }
+  .btn { margin-top:12px; width:100%; padding:9px; border:0; border-radius:6px; background:var(--apt); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .btn.sub { background:#eef2f7; color:var(--text); font-weight:500; }
+  details summary { cursor:pointer; font-weight:600; }
+  .item { padding:10px 16px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .item:hover { background:#f3f6fd; }
+  .tag { display:inline-block; font-size:11px; padding:0 5px; border-radius:4px; color:#fff; margin-right:4px; vertical-align:1px; }
+  .tag.APT { background:var(--apt); } .tag.OPST { background:var(--opst); }
+  .pin { display:inline-block; padding:2px 7px; border-radius:10px; color:#fff; font-size:12px; font-weight:600; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.35); border:2px solid #fff; cursor:pointer; }
+  .pin.APT { background:var(--apt); } .pin.OPST { background:var(--opst); } .pin.sel { background:var(--sel); }
+  .lm { display:inline-block; padding:2px 6px; background:var(--ok); color:#fff; border-radius:4px; font-size:11px; font-weight:700; border:2px solid #fff; white-space:nowrap; }
+  #mapMsg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:24px; text-align:center; color:var(--muted); }
+  #detail { position:absolute; right:12px; top:12px; bottom:12px; width:400px; background:var(--panel); border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.18); overflow-y:auto; display:none; z-index:1000; }
+  #detail.show { display:block; }
+  .x { float:right; border:0; background:none; font-size:20px; cursor:pointer; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:5px 4px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:500; font-size:12px; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
+  .chip { border:1px solid var(--line); background:#fff; border-radius:12px; padding:2px 9px; font-size:12px; cursor:pointer; color:var(--text); }
+  .chip.on { background:var(--sel); color:#fff; border-color:var(--sel); }
+  .stop { padding:8px 0; border-bottom:1px dashed var(--line); cursor:pointer; }
+  .routes { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+  .route { font-size:12px; padding:1px 6px; border-radius:4px; background:#eef2f7; }
+  .warn { background:#fff7e6; color:#8a5a00; padding:10px 12px; border-radius:6px; font-size:13px; margin-top:10px; }
+  .err { background:#fdecec; color:#9b1c1c; }
+  @media (max-width:800px) {
+    #app { grid-template-columns:1fr; grid-template-rows:55vh auto; height:auto; }
+    .mapwrap { height:55vh; }
+    aside { order:2; }
+    #detail { position:fixed; left:8px; right:8px; width:auto; top:8px; bottom:8px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="sec">
+      <h1>실거래 지도 · 용인 / 수원 / 오산</h1>
+      <div class="muted">국토교통부 실거래가를 검색할 때마다 직접 조회합니다</div>
+    </div>
+
+    <div class="sec">
+      <details id="keysBox">
+        <summary>API 키 설정 <span id="keyState" class="muted"></span></summary>
+        <label class="f">공공데이터포털 인증키 (Decoding)</label>
+        <input id="kData" type="password" autocomplete="off">
+        <label class="f">카카오 JavaScript 키</label>
+        <input id="kKakao" type="password" autocomplete="off">
+        <button class="btn sub" id="saveKeys">저장</button>
+        <div class="muted" style="margin-top:6px">키는 이 브라우저에만 저장됩니다. 카카오 앱의 플랫폼 &gt; Web 에 <b id="siteUrl"></b> 를 등록해야 지도가 뜹니다.</div>
+      </details>
+    </div>
+
+    <div class="sec">
+      <div class="row">
+        <div><label class="f">시</label><select id="si"></select></div>
+        <div><label class="f">구</label><select id="gu"></select></div>
+      </div>
+      <label class="f">기간</label>
+      <select id="months">
+        <option value="3">최근 3개월</option>
+        <option value="6">최근 6개월</option>
+        <option value="12" selected>최근 1년</option>
+        <option value="24">최근 2년</option>
+      </select>
+      <button class="btn" id="load">실거래 불러오기</button>
+      <div id="progress" class="muted" style="margin-top:6px"></div>
+    </div>
+
+    <div class="sec" id="filters">
+      <label class="f" style="margin-top:0">동</label>
+      <select id="dong"><option value="">전체</option></select>
+      <label class="f">매물 유형</label>
+      <div class="seg" id="kinds"><button data-v="APT" class="on">아파트</button><button data-v="OPST" class="on">오피스텔</button></div>
+      <label class="f">거래 방식</label>
+      <div class="seg" id="trade"><button data-v="SALE" class="on">매매</button><button data-v="JEONSE">전세</button><button data-v="WOLSE">월세</button></div>
+      <label class="f">전용면적 <span class="muted" id="areaHint"></span></label>
+      <div class="row">
+        <input type="number" id="amin" placeholder="최소" min="0" step="any">
+        <span style="flex:0">~</span>
+        <input type="number" id="amax" placeholder="최대" min="0" step="any">
+        <div class="seg" id="unit" style="flex:0 0 90px"><button data-v="m2" class="on">㎡</button><button data-v="py">평</button></div>
+      </div>
+      <label class="f">정렬</label>
+      <select id="sort">
+        <option value="daycare">이지어린이집 가까운 순</option>
+        <option value="office">광교효성해링턴타워 가까운 순</option>
+        <option value="price">가격 낮은 순</option>
+        <option value="recent">최근 거래 순</option>
+      </select>
+    </div>
+    <div id="list"></div>
+  </aside>
+  <div class="mapwrap"><div id="mapMsg">카카오 JavaScript 키를 저장하면 지도가 표시됩니다.</div><div id="map"></div><div id="detail"></div></div>
+</div>
+
+<script>
+/* ───────── 설정 ───────── */
+const REGIONS = {
+  '용인시': [['41461','처인구'],['41463','기흥구'],['41465','수지구']],
+  '수원시': [['41111','장안구'],['41113','권선구'],['41115','팔달구'],['41117','영통구']],
+  '오산시': [['41370','오산시']],
+};
+const SGG_NAME = Object.fromEntries(Object.entries(REGIONS).flatMap(([si, gs]) => gs.map(([c, g]) => [c, si === g ? si : `${si} ${g}`])));
+const LANDMARKS = [
+  { key:'daycare', name:'이지어린이집', address:'경기도 용인시 기흥구 예현로35번길 30' },
+  { key:'office',  name:'광교효성해링턴타워', address:'경기도 수원시 영통구 광교중앙로 170' },
+];
+const APIS = [
+  { key:'apt_trade',  kind:'APT',  rent:false, path:'RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade', nameF:'aptNm' },
+  { key:'apt_rent',   kind:'APT',  rent:true,  path:'RTMSDataSvcAptRent/getRTMSDataSvcAptRent',   nameF:'aptNm' },
+  { key:'offi_trade', kind:'OPST', rent:false, path:'RTMSDataSvcOffiTrade/getRTMSDataSvcOffiTrade', nameF:'offiNm' },
+  { key:'offi_rent',  kind:'OPST', rent:true,  path:'RTMSDataSvcOffiRent/getRTMSDataSvcOffiRent',   nameF:'offiNm' },
+];
+const PY = 400 / 121; // 1평 = 3.3058㎡
+const TRADE_KO = { SALE:'매매', JEONSE:'전세', WOLSE:'월세' };
+const KIND_KO = { APT:'아파트', OPST:'오피스텔' };
+
+/* ───────── 저장소 (이 브라우저에만) ───────── */
+const store = {
+  get(k, d = null) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+// 공공데이터포털 키: Encoding 키(%2B 등 포함)를 넣어도 동작하도록 Decoding 형태로 통일
+function normKey(k) {
+  k = String(k || '').trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '');
+  if (/%[0-9A-Fa-f]{2}/.test(k)) { try { k = decodeURIComponent(k); } catch {} }
+  return k;
+}
+const keys = () => { const k = store.get('keys', { data:'', kakao:'' }); return { data: normKey(k.data), kakao: String(k.kakao || '').trim() }; };
+const geoCache = store.get('geo', {});
+const saveGeo = () => store.set('geo', geoCache);
+
+/* ───────── 유틸 ───────── */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = s => { const v = parseFloat(String(s ?? '').replace(/,/g, '').trim()); return isNaN(v) ? null : v; };
+const fmtMan = v => { if (v >= 10000) { const e = Math.floor(v / 10000), r = v % 10000; return r ? `${e}억 ${r.toLocaleString()}` : `${e}억`; } return `${v.toLocaleString()}만`; };
+const shortMan = v => v >= 10000 ? (v / 10000).toFixed(v >= 100000 ? 0 : 1).replace(/\.0$/, '') + '억' : v.toLocaleString();
+const priceLabel = d => d.rent ? `${shortMan(d.price)}/${d.rent}` : shortMan(d.price);
+const priceFull = d => d.rent ? `${fmtMan(d.price)} / 월 ${d.rent}만` : fmtMan(d.price);
+const py = m2 => (m2 / PY).toFixed(1);
+const km = m => m == null ? '-' : m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(2)}km`;
+function haversine(a, b) {
+  const R = 6371000, r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function monthsBack(n) {
+  const out = [], d = new Date(); d.setDate(1);
+  for (let i = 0; i < n; i++) { out.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`); d.setMonth(d.getMonth() - 1); }
+  return out;
+}
+async function pool(tasks, n, onDone) {        // 동시 요청 n개 제한
+  let i = 0, done = 0;
+  const run = async () => { while (i < tasks.length) { const t = tasks[i++]; await t(); onDone?.(++done, tasks.length); } };
+  await Promise.all(Array.from({ length: Math.min(n, tasks.length) }, run));
+}
+
+/* ───────── 국토부 실거래가 ───────── */
+class ApiError extends Error {}
+async function molitFetch(api, sgg, ym) {
+  const key = keys().data;
+  if (!key) throw new ApiError('공공데이터포털 키를 먼저 저장하세요.');
+  const items = [];
+  for (let page = 1; ; page++) {
+    const url = `https://apis.data.go.kr/1613000/${api.path}?serviceKey=${encodeURIComponent(key)}&LAWD_CD=${sgg}&DEAL_YMD=${ym}&pageNo=${page}&numOfRows=1000`;
+    const r = await fetch(url);
+    const text = await r.text();
+    const raw = `[HTTP ${r.status}] ${text.replace(/\s+/g, ' ').slice(0, 200)}`;
+    if (r.status === 403 || r.status === 401) throw new ApiError(`공공데이터포털 키가 거부됐습니다 (${api.key}). 서버 응답: ${raw}`);
+    if (!r.ok) throw new ApiError(`국토부 API 오류 ${raw}`);
+    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    const auth = doc.querySelector('returnAuthMsg')?.textContent;
+    if (auth) throw new ApiError(`키 오류: ${auth}`);
+    const code = doc.querySelector('resultCode')?.textContent?.trim();
+    if (code && code !== '00' && code !== '000') throw new ApiError(`국토부 API 오류 ${code}: ${doc.querySelector('resultMsg')?.textContent}`);
+    const batch = [...doc.querySelectorAll('item')].map(it => Object.fromEntries([...it.children].map(c => [c.tagName, c.textContent.trim()])));
+    items.push(...batch);
+    const total = num(doc.querySelector('totalCount')?.textContent) || 0;
+    if (!batch.length || items.length >= total) return items;
+  }
+}
+function normalize(api, it) {
+  if ((it.cdealType || '').trim()) return null;            // 계약 해제
+  const name = it[api.nameF], sgg = it.sggCd, umd = it.umdNm, area = num(it.excluUseAr);
+  if (!name || !sgg || !umd || !area || !it.dealYear) return null;
+  let trade, price, rent = 0;
+  if (api.rent) { price = num(it.deposit); rent = num(it.monthlyRent) || 0; trade = rent > 0 ? 'WOLSE' : 'JEONSE'; }
+  else { price = num(it.dealAmount); trade = 'SALE'; }
+  if (price == null) return null;
+  const jibun = it.jibun || '';
+  return {
+    building: { id: `${api.kind}|${sgg}|${umd}|${jibun}|${name}`, kind: api.kind, name, sgg, umd, jibun, buildYear: num(it.buildYear) },
+    deal: { trade, area: Math.round(area * 100) / 100, floor: num(it.floor), price, rent,
+            ymd: `${it.dealYear}-${String(it.dealMonth).padStart(2, '0')}-${String(it.dealDay).padStart(2, '0')}`,
+            contract: it.contractType || '' },
+  };
+}
+
+/* ───────── 카카오 지도 SDK (지도 + 주소 검색) ───────── */
+let sdkPromise = null;
+function loadKakao() {
+  if (window.kakao?.maps?.services) return Promise.resolve();
+  const key = keys().kakao;
+  if (!key) return Promise.reject(new ApiError('카카오 JavaScript 키를 먼저 저장하세요.'));
+  sdkPromise ??= new Promise((ok, fail) => {
+    const sc = document.createElement('script');
+    sc.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&libraries=services&autoload=false`;
+    sc.onload = () => kakao.maps.load(ok);
+    sc.onerror = () => { sdkPromise = null; fail(new ApiError(`카카오 지도를 불러오지 못했습니다. JavaScript 키와 플랫폼 > Web 사이트 도메인(${location.origin}) 등록을 확인하세요.`)); };
+    document.head.appendChild(sc);
+  });
+  return sdkPromise;
+}
+const kakaoSearch = (kind, query) => new Promise((ok, fail) => {
+  const S = kakao.maps.services;
+  const cb = (res, status) => {
+    if (status === S.Status.OK) ok({ lat: +res[0].y, lng: +res[0].x });
+    else if (status === S.Status.ZERO_RESULT) ok(null);
+    else fail(new ApiError(`카카오 주소 검색 오류 (${status}). 도메인 등록을 확인하세요.`));
+  };
+  if (kind === 'address') new S.Geocoder().addressSearch(query, cb, { size: 1 });
+  else new S.Places().keywordSearch(query, cb, { size: 1 });
+});
+async function geocode(address, keyword) {
+  if (address in geoCache) return geoCache[address];
+  await loadKakao();
+  let hit = await kakaoSearch('address', address);
+  if (!hit && keyword) hit = await kakaoSearch('keyword', keyword);
+  geoCache[address] = hit;
+  return hit;
+}
+
+/* ───────── 경기도 버스 (GBIS) ───────── */
+const busCache = {};
+async function gbis(path, params, listKey) {
+  const q = new URLSearchParams({ serviceKey: keys().data, format: 'json', ...params });
+  const r = await fetch(`https://apis.data.go.kr/6410000/busstationservice/v2/${path}?${q}`);
+  if (r.status === 403 || r.status === 401) throw new ApiError('버스 API 키가 거부됐습니다. "경기도_정류소 조회" 활용신청을 확인하세요.');
+  if (!r.ok) throw new ApiError(`버스 API 오류 HTTP ${r.status}`);
+  const text = (await r.text()).trim();
+  if (text.startsWith('{')) {
+    const resp = JSON.parse(text).response || {}, code = +(resp.msgHeader?.resultCode ?? 0);
+    if (code === 4) return [];
+    if (code !== 0) throw new ApiError(`버스 API 오류 ${code}: ${resp.msgHeader?.resultMessage}`);
+    const v = resp.msgBody?.[listKey];
+    return v == null ? [] : Array.isArray(v) ? v : [v];
+  }
+  const doc = new DOMParser().parseFromString(text, 'text/xml');
+  const code = +(doc.querySelector('resultCode')?.textContent ?? 0);
+  if (code === 4) return [];
+  if (code !== 0) throw new ApiError(`버스 API 오류 ${code}`);
+  return [...doc.getElementsByTagName(listKey)].map(el => Object.fromEntries([...el.children].map(c => [c.tagName, c.textContent.trim()])));
+}
+async function nearestStops(pt) {
+  const k = `s${pt.lat.toFixed(5)},${pt.lng.toFixed(5)}`;
+  busCache[k] ??= (await gbis('getBusStationAroundListv2', { x: pt.lng.toFixed(6), y: pt.lat.toFixed(6) }, 'busStationAroundList'))
+    .map(s => ({ id: String(s.stationId), name: s.stationName, no: s.mobileNo ? String(s.mobileNo).trim() : '', lat: +s.y, lng: +s.x }))
+    .filter(s => !isNaN(s.lat))
+    .map(s => ({ ...s, dist: haversine(pt, s) }))
+    .sort((a, b) => a.dist - b.dist);
+  return busCache[k].slice(0, 3);
+}
+async function stopRoutes(id) {
+  busCache['r' + id] ??= (await gbis('getBusStationViaRouteListv2', { stationId: id }, 'busRouteList'))
+    .map(r => ({ name: String(r.routeName), type: r.routeTypeName || '', dest: r.routeDestName || '' }))
+    .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name, 'ko', { numeric: true }));
+  return busCache['r' + id];
+}
+
+/* ───────── 상태 ───────── */
+const S = { trade:'SALE', kinds:new Set(['APT','OPST']), unit:'m2', buildings:new Map(), loaded:new Set(), landmarks:[], view:[], sel:null };
+let map = null, overlays = [], lmOverlays = [], selArea = null;
+
+/* ───────── 불러오기 ───────── */
+async function load() {
+  const sgg = $('#gu').value;
+  const btn = $('#load'), prog = $('#progress');
+  if (!sgg) { prog.innerHTML = '<div class="warn">구를 선택하세요.</div>'; return; }
+  btn.disabled = true;
+  try {
+    await ensureLandmarks();
+    const yms = monthsBack(+$('#months').value);
+    const tasks = [];
+    for (const api of APIS) for (const ym of yms) {
+      const k = `${api.key}|${sgg}|${ym}`;
+      if (S.loaded.has(k)) continue;
+      tasks.push(async () => {
+        for (const it of await molitFetch(api, sgg, ym)) {
+          const n = normalize(api, it); if (!n) continue;
+          let b = S.buildings.get(n.building.id);
+          if (!b) S.buildings.set(n.building.id, b = { ...n.building, deals: [], dealKeys: new Set() });
+          const dk = `${n.deal.trade}|${n.deal.area}|${n.deal.floor}|${n.deal.ymd}|${n.deal.price}|${n.deal.rent}`;
+          if (!b.dealKeys.has(dk)) { b.dealKeys.add(dk); b.deals.push(n.deal); }
+        }
+        S.loaded.add(k);
+      });
+    }
+    await pool(tasks, 4, (d, t) => prog.textContent = `실거래 조회 ${d}/${t}`);
+
+    const need = [...S.buildings.values()].filter(b => b.sgg === sgg && b.lat === undefined);
+    await pool(need.map(b => async () => {
+      const addr = `경기도 ${SGG_NAME[b.sgg]} ${b.umd} ${b.jibun}`.trim();
+      const hit = await geocode(addr, `${SGG_NAME[b.sgg]} ${b.name}`);
+      b.lat = hit?.lat ?? null; b.lng = hit?.lng ?? null;
+    }), 6, (d, t) => { prog.textContent = `위치 확인 ${d}/${t}`; if (d % 50 === 0) saveGeo(); });
+    saveGeo();
+
+    for (const b of S.buildings.values()) b.deals.sort((x, y) => y.ymd.localeCompare(x.ymd));
+    const inSgg = [...S.buildings.values()].filter(b => b.sgg === sgg);
+    const noGeo = inSgg.filter(b => b.lat == null).length;
+    prog.textContent = `${SGG_NAME[sgg]} · 건물 ${inSgg.length.toLocaleString()}개 · 거래 ${inSgg.reduce((s, b) => s + b.deals.length, 0).toLocaleString()}건` + (noGeo ? ` · 위치 못 찾음 ${noGeo}` : '');
+    fillDongs(sgg);
+    render(true);
+  } catch (e) {
+    prog.innerHTML = `<div class="warn err">${esc(e.message)}</div>`;
+    if (!(e instanceof ApiError)) console.error(e);
+  } finally { btn.disabled = false; }
+}
+
+async function ensureLandmarks() {
+  if (S.landmarks.length) return;
+  for (const lm of LANDMARKS) {
+    const hit = await geocode(lm.address, lm.name);
+    S.landmarks.push({ ...lm, ...(hit || { lat: null, lng: null }) });
+  }
+  saveGeo();
+  drawLandmarks();
+}
+function drawLandmarks() {
+  if (!map) return;
+  lmOverlays.forEach(o => o.setMap(null));
+  lmOverlays = S.landmarks.filter(l => l.lat != null).map(l => new kakao.maps.CustomOverlay({
+    map, position: new kakao.maps.LatLng(l.lat, l.lng), yAnchor: 1, zIndex: 5,
+    content: `<span class="lm">★ ${esc(l.name)}</span>`,
+  }));
+}
+const distances = b => S.landmarks.map(l => ({ ...l, d: (b.lat != null && l.lat != null) ? haversine(b, l) : null }));
+
+/* ───────── 필터 · 렌더 ───────── */
+function areaRange() {
+  const f = S.unit === 'py' ? PY : 1, a = parseFloat($('#amin').value), b = parseFloat($('#amax').value);
+  return [isNaN(a) ? 0 : a * f, isNaN(b) ? Infinity : b * f];
+}
+function updateHint() {
+  const [lo, hi] = areaRange();
+  $('#areaHint').textContent = (lo || hi < Infinity)
+    ? (S.unit === 'py' ? `= ${lo.toFixed(1)} ~ ${hi < Infinity ? hi.toFixed(1) : ''}㎡` : `= ${py(lo)} ~ ${hi < Infinity ? py(hi) : ''}평`) : '';
+}
+const areaOk = (d, [lo, hi]) => d.area >= lo - 0.01 && d.area <= hi + 0.01;
+
+function render(fit = false) {
+  const sgg = $('#gu').value, dong = $('#dong').value, rng = areaRange();
+  S.view = [];
+  for (const b of S.buildings.values()) {
+    if (b.sgg !== sgg || b.lat == null || !S.kinds.has(b.kind) || (dong && b.umd !== dong)) continue;
+    const ds = b.deals.filter(d => d.trade === S.trade && areaOk(d, rng));
+    if (!ds.length) continue;
+    S.view.push({ b, latest: ds[0], count: ds.length, dist: distances(b) });
+  }
+  const s = $('#sort').value, dk = (v, k) => v.dist.find(x => x.key === k)?.d ?? 1e12;
+  S.view.sort({
+    daycare: (a, b) => dk(a, 'daycare') - dk(b, 'daycare'),
+    office: (a, b) => dk(a, 'office') - dk(b, 'office'),
+    price: (a, b) => a.latest.price - b.latest.price || a.latest.rent - b.latest.rent,
+    recent: (a, b) => b.latest.ymd.localeCompare(a.latest.ymd),
+  }[s]);
+
+  $('#list').innerHTML = S.view.length
+    ? `<div class="sec muted">${S.view.length}개 건물 · ${TRADE_KO[S.trade]} 최근 실거래 기준</div>` + S.view.map((v, i) => `
+      <div class="item" data-i="${i}">
+        <div><span class="tag ${v.b.kind}">${KIND_KO[v.b.kind]}</span><b>${esc(v.b.name)}</b> <span class="muted">${esc(v.b.umd)}</span></div>
+        <div>${priceFull(v.latest)} <span class="muted">· ${v.latest.area}㎡(${py(v.latest.area)}평) · ${v.latest.floor ?? '-'}층 · ${v.latest.ymd}</span></div>
+        <div class="muted">${v.dist.map(x => `${esc(x.name)} ${km(x.d)}`).join(' · ')} · 거래 ${v.count}건</div>
+      </div>`).join('')
+    : (S.buildings.size ? '<div class="sec muted">조건에 맞는 실거래가 없습니다.</div>' : '');
+  $('#list').onclick = e => { const el = e.target.closest('.item'); if (el) select(S.view[+el.dataset.i].b, true); };
+
+  if (!map) return;
+  overlays.forEach(o => o.setMap(null)); overlays = [];
+  const bounds = new kakao.maps.LatLngBounds();
+  for (const v of S.view) {
+    const el = document.createElement('span');
+    el.className = `pin ${v.b.kind}${S.sel === v.b.id ? ' sel' : ''}`;
+    el.title = v.b.name; el.textContent = priceLabel(v.latest);
+    el.onclick = () => select(v.b, false);
+    const pos = new kakao.maps.LatLng(v.b.lat, v.b.lng);
+    overlays.push(new kakao.maps.CustomOverlay({ map, position: pos, content: el, yAnchor: 1, zIndex: S.sel === v.b.id ? 10 : 1 }));
+    bounds.extend(pos);
+  }
+  if (fit && S.view.length) map.setBounds(bounds, 40, 40, 40, 40);
+}
+
+function fillDongs(sgg) {
+  const cur = $('#dong').value;
+  const ds = [...new Set([...S.buildings.values()].filter(b => b.sgg === sgg).map(b => b.umd))].sort((a, b) => a.localeCompare(b, 'ko'));
+  $('#dong').innerHTML = '<option value="">전체</option>' + ds.map(d => `<option${d === cur ? ' selected' : ''}>${esc(d)}</option>`).join('');
+}
+
+/* ───────── 상세 ───────── */
+function select(b, pan) {
+  S.sel = b.id; selArea = null;
+  render();
+  if (pan && map) map.panTo(new kakao.maps.LatLng(b.lat, b.lng));
+  showDetail(b);
+  loadStops(b);
+}
+
+function showDetail(b) {
+  const rng = areaRange();
+  const all = b.deals.filter(d => areaOk(d, rng));
+  const tradeDeals = all.filter(d => d.trade === S.trade);
+  const areas = [...new Set(tradeDeals.map(d => d.area))].sort((x, y) => x - y);
+  const rows = tradeDeals.filter(d => selArea == null || d.area === selArea);
+  const latestOf = t => all.find(d => d.trade === t && (selArea == null || d.area === selArea));
+  const stopsHtml = $('#stops')?.dataset.for === b.id ? $('#stops').innerHTML : '<b>가까운 버스 정류장</b><div class="muted">불러오는 중…</div>';
+  $('#detail').innerHTML = `
+    <div class="sec">
+      <button class="x" onclick="document.getElementById('detail').classList.remove('show')">×</button>
+      <div><span class="tag ${b.kind}">${KIND_KO[b.kind]}</span><b style="font-size:16px">${esc(b.name)}</b></div>
+      <div class="muted">경기도 ${esc(SGG_NAME[b.sgg])} ${esc(b.umd)} ${esc(b.jibun)}${b.buildYear ? ` · ${b.buildYear}년 건축` : ''}</div>
+    </div>
+    <div class="sec">
+      <table><tr><th>기준점</th><th class="num">직선거리</th></tr>
+      ${distances(b).map(x => `<tr><td>${esc(x.name)}</td><td class="num">${km(x.d)}</td></tr>`).join('')}</table>
+    </div>
+    <div class="sec">
+      <table><tr><th>최근 실거래</th><th class="num">가격</th><th class="num">계약일</th></tr>
+      ${['SALE','JEONSE','WOLSE'].map(t => { const x = latestOf(t);
+        return `<tr><td>${TRADE_KO[t]}</td><td class="num">${x ? priceFull(x) : '-'}</td><td class="num">${x ? x.ymd : ''}</td></tr>`; }).join('')}</table>
+    </div>
+    <div class="sec">
+      <b>${TRADE_KO[S.trade]} 실거래 내역</b> <span class="muted">${rows.length}건</span>
+      <div class="chips"><button class="chip ${selArea == null ? 'on' : ''}" data-a="">전체 면적</button>
+        ${areas.map(a => `<button class="chip ${selArea === a ? 'on' : ''}" data-a="${a}">${a}㎡·${py(a)}평</button>`).join('')}</div>
+      <table><tr><th>계약일</th><th>전용</th><th class="num">층</th><th class="num">가격</th></tr>
+      ${rows.slice(0, 200).map(x => `<tr><td>${x.ymd}</td><td>${x.area}㎡</td><td class="num">${x.floor ?? '-'}</td>
+        <td class="num">${priceFull(x)}${x.contract ? ` <span class="muted">${esc(x.contract)}</span>` : ''}</td></tr>`).join('')}</table>
+    </div>
+    <div class="sec" id="stops" data-for="${esc(b.id)}">${stopsHtml}</div>`;
+  $('#detail .chips').onclick = e => {
+    const c = e.target.closest('.chip'); if (!c) return;
+    selArea = c.dataset.a === '' ? null : +c.dataset.a; showDetail(b); bindStops();
+  };
+  $('#detail').classList.add('show');
+}
+
+async function loadStops(b) {
+  const box = () => document.querySelector(`#stops[data-for="${CSS.escape(b.id)}"]`);
+  try {
+    const stops = await nearestStops(b);
+    if (!box()) return;
+    box().innerHTML = `<b>가까운 버스 정류장</b> <span class="muted">(누르면 노선)</span>` + (stops.length
+      ? stops.map(s => `<div class="stop" data-id="${esc(s.id)}"><div>${esc(s.name)} <span class="muted">${s.no ? '#' + esc(s.no) : ''}</span><span style="float:right">${km(s.dist)}</span></div><div class="routes"></div></div>`).join('')
+      : '<div class="muted">주변 정류장이 조회되지 않았습니다.</div>');
+    bindStops();
+  } catch (e) {
+    if (box()) box().innerHTML = `<b>가까운 버스 정류장</b><div class="warn err">${esc(e.message)}</div>`;
+  }
+}
+function bindStops() {
+  document.querySelectorAll('#stops .stop').forEach(s => s.onclick = async () => {
+    const r = s.querySelector('.routes');
+    if (r.dataset.loaded) { r.hidden = !r.hidden; return; }
+    r.innerHTML = '<span class="muted">노선 조회 중…</span>';
+    try {
+      const rs = await stopRoutes(s.dataset.id);
+      r.dataset.loaded = 1;
+      r.innerHTML = rs.length ? rs.map(x => `<span class="route" title="${esc(x.type)} → ${esc(x.dest)}">${esc(x.name)}</span>`).join('') : '<span class="muted">노선 없음</span>';
+    } catch (e) { r.innerHTML = `<span class="muted">${esc(e.message)}</span>`; }
+  });
+}
+
+/* ───────── 시작 ───────── */
+function seg(id, onPick, multi = false) {
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (multi) b.classList.toggle('on'); else $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    onPick(b.dataset.v, b);
+  });
+}
+function showKeyState() {
+  const k = keys(), ok = k.data && k.kakao;
+  $('#keyState').textContent = ok ? '✓ 저장됨' : '— 필요';
+  $('#kData').value = k.data; $('#kKakao').value = k.kakao;
+  $('#keysBox').open = !ok;
+}
+
+async function initMap() {
+  if (map) return;
+  try {
+    await loadKakao();
+  } catch (e) {
+    $('#mapMsg').textContent = e.message; return;
+  }
+  $('#mapMsg').style.display = 'none';
+  map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(37.255, 127.07), level: 7 });
+  map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.LEFT);
+  drawLandmarks();
+  render(true);
+}
+
+(function boot() {
+  $('#siteUrl').textContent = location.origin.startsWith('http') ? location.origin : '(GitHub Pages 주소)';
+
+  const si = $('#si'), gu = $('#gu');
+  si.innerHTML = Object.keys(REGIONS).map(s => `<option>${s}</option>`).join('');
+  const fillGu = () => { gu.innerHTML = REGIONS[si.value].map(([c, g]) => `<option value="${c}">${g}</option>`).join(''); onGu(); };
+  const onGu = () => { fillDongs(gu.value); render(true); };
+  si.onchange = fillGu; gu.onchange = onGu;
+  si.value = '용인시'; fillGu(); gu.value = '41463';
+
+  seg('#trade', v => { S.trade = v; render(); if (S.sel) showDetail(S.buildings.get(S.sel)); });
+  seg('#kinds', (v, b) => { b.classList.contains('on') ? S.kinds.add(v) : S.kinds.delete(v); render(); }, true);
+  seg('#unit', v => {
+    if (v === S.unit) return;
+    ['#amin', '#amax'].forEach(id => { const x = parseFloat($(id).value); if (!isNaN(x)) $(id).value = (v === 'py' ? x / PY : x * PY).toFixed(1); });
+    S.unit = v; updateHint();
+  });
+  ['#amin', '#amax'].forEach(id => $(id).addEventListener('input', () => { updateHint(); render(); }));
+  $('#dong').onchange = () => render(true);
+  $('#sort').onchange = () => render();
+  $('#load').onclick = load;
+  $('#saveKeys').onclick = () => {
+    store.set('keys', { data: $('#kData').value.trim(), kakao: $('#kKakao').value.trim() });
+    S.landmarks = []; showKeyState();
+    if (!map) initMap();
+  };
+  showKeyState(); updateHint(); initMap();
+})();
+</script>
+</body>
+</html>
