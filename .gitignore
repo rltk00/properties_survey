@@ -1,0 +1,8 @@
+.env
+.venv/
+data/
+captures/
+.browser-profile/
+__pycache__/
+tests/_test.db
+_old_python/
