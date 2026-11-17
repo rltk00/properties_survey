@@ -72,12 +72,10 @@
   .pin.sel { color: var(--app-ink); background: #ffd43b; }
   .hover-tip { display: inline-block; padding: 3px 8px; color: #000; font: 600 12px var(--app-font); background: #fff; border: 1px solid #000; border-radius: 2px; white-space: nowrap; }
   /* 지도 오른쪽 위젯 */
-  .map-widget { position: absolute; right: 12px; z-index: 10; display: flex; flex-direction: column; background: var(--app-surface); border-radius: 4px; box-shadow: 0 1px 6px rgb(0 0 0 / 12%); overflow: hidden; }
+  .map-widget { position: absolute; right: 12px; z-index: 10; }
   .map-widget.top { top: 12px; }
   .map-widget.bottom { bottom: 24px; }
-  .map-widget calcite-action + calcite-action { border-top: 1px solid var(--app-border); }
-  .map-widget calcite-action[active] { --calcite-action-background-color: var(--app-ink); --calcite-action-text-color: #fff; --calcite-action-text-color-press: #fff; }
-  .school-label { padding: 1px 6px; color: #5f3dc4; font: 700 11px var(--app-font); background: rgb(255 255 255 / 90%); border: 1px solid #7048e8; border-radius: 2px; white-space: nowrap; pointer-events: none; }
+  .school-label { padding: 1px 6px; color: #d9480f; font: 700 11px var(--app-font); background: rgb(255 255 255 / 92%); border: 1px solid #f76707; border-radius: 2px; white-space: nowrap; pointer-events: none; }
   .me-dot { display: block; width: 14px; height: 14px; background: #007ac2; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 6px rgb(0 122 194 / 20%), 0 1px 3px rgb(0 0 0 / 40%); }
   /* 지도 마커: 아이콘 + 아래 레이블 */
   .mk { position: relative; display: block; cursor: pointer; }
@@ -223,14 +221,18 @@
       <select id="dong" class="field"><option value="">읍면동</option></select>
     </div>
     <div id="status" class="toolbar-status"></div>
-    <div class="map-widget top">
-      <calcite-action id="schoolBtn" icon="education" text="학군" text-enabled scale="s" title="초등학교 통학구역"></calcite-action>
-    </div>
-    <div class="map-widget bottom">
-      <calcite-action id="myLocBtn" icon="gps-on" text="내 위치" scale="s"></calcite-action>
-      <calcite-action id="zoomIn" icon="plus" text="확대" scale="s"></calcite-action>
-      <calcite-action id="zoomOut" icon="minus" text="축소" scale="s"></calcite-action>
-    </div>
+    <calcite-action-pad class="map-widget top" layout="vertical" expand-disabled>
+      <calcite-action id="schoolBtn" icon="education" text="학군 (초등학교 통학구역)" scale="s"></calcite-action>
+    </calcite-action-pad>
+    <calcite-action-pad class="map-widget bottom" layout="vertical" expand-disabled>
+      <calcite-action-group>
+        <calcite-action id="myLocBtn" icon="gps-on" text="내 위치" scale="s"></calcite-action>
+      </calcite-action-group>
+      <calcite-action-group>
+        <calcite-action id="zoomIn" icon="plus" text="확대" scale="s"></calcite-action>
+        <calcite-action id="zoomOut" icon="minus" text="축소" scale="s"></calcite-action>
+      </calcite-action-group>
+    </calcite-action-pad>
   </div>
 
   <calcite-shell-panel id="end-panel" slot="panel-end" display-mode="dock" collapsed>
@@ -665,7 +667,7 @@ function onIdle() {
 
 /* ───────── 학군: 초등학교 통학구역 (브이월드 LT_C_DESCH, 화면 범위로 조회) ───────── */
 const SCHOOL_MAX_LEVEL = 7;          // 이보다 축소하면 표시만 유지하고 새로 받지 않음
-const SCHOOL_STYLE = { strokeColor: '#7048e8', strokeOpacity: 0.85, strokeWeight: 2, fillColor: '#7048e8', fillOpacity: 0.06 };
+const SCHOOL_STYLE = { strokeColor: '#f76707', strokeOpacity: 0.9, strokeWeight: 2, strokeStyle: 'dash', fillColor: '#fd7e14', fillOpacity: 0.07 };
 const schools = new Map();           // hakgudo_id → {name, parts, shapes, label}
 const schoolTiles = new Set();       // 받아 둔 격자 (0.05° 단위)
 let schoolSeq = 0;
