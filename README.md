@@ -1,4 +1,4 @@
-# 실거래 지도 (용인 · 수원 · 오산)
+﻿# 실거래 지도 (전국)
 
 GitHub Pages 주소로 열면 바로 쓸 수 있습니다. 설치할 것도, 켜 둘 서버도 없습니다.
 검색할 때마다 브라우저가 국토부 실거래가, 경기도 버스정보, 카카오맵 API를 직접 호출합니다.
@@ -30,7 +30,8 @@ https://developers.kakao.com 에 로그인한 뒤 **앱**에서 사용할 앱을
 - 국토교통부_아파트 전월세 실거래가 자료 (`RTMSDataSvcAptRent`)
 - 국토교통부_오피스텔 매매 실거래가 자료 (`RTMSDataSvcOffiTrade`)
 - 국토교통부_오피스텔 전월세 실거래가 자료 (`RTMSDataSvcOffiRent`)
-- 경기도_정류소 조회 (`busstationservice`)
+- 경기도_정류소 조회 (`busstationservice`): 경기도 버스 정류장
+- 국토교통부_(TAGO)_버스정류소정보 (`BusSttnInfoInqireService`): 경기도 밖 지역 버스 정류장
 
 ## 브이월드 (동 경계)
 

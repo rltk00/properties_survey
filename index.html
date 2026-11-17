@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>실거래 지도</title>
-<meta name="description" content="용인·수원·오산 아파트·오피스텔 실거래가 지도">
+<meta name="description" content="전국 아파트·오피스텔 실거래가 지도">
 <style>
   :root { --bg:#f6f7f9; --panel:#fff; --text:#1d2433; --muted:#6b7385; --line:#e3e6ec; --apt:#2f6fed; --opst:#e8772e; --sel:#111827; --ok:#10b981; }
   * { box-sizing: border-box; }
@@ -18,13 +18,12 @@
   .muted { color:var(--muted); font-size:12px; }
   label.f { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
   select, input { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font:inherit; background:#fff; color:var(--text); }
-  .row { display:flex; gap:6px; align-items:center; } .row > * { flex:1; }
+  .row { display:flex; gap:6px; align-items:center; } .row > * { flex:1; min-width:0; }
   .seg { display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
   .seg button { flex:1; border:0; background:#fff; padding:6px 0; font:inherit; cursor:pointer; color:var(--text); }
   .seg button + button { border-left:1px solid var(--line); }
   .seg button.on { background:var(--sel); color:#fff; }
   .btn { margin-top:12px; width:100%; padding:9px; border:0; border-radius:6px; background:var(--apt); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
-  .btn:disabled { opacity:.5; cursor:default; }
   .btn.sub { background:#eef2f7; color:var(--text); font-weight:500; }
   details summary { cursor:pointer; font-weight:600; }
   .item { padding:10px 16px; border-bottom:1px solid var(--line); cursor:pointer; }
@@ -35,6 +34,16 @@
   .pin.APT { background:var(--apt); } .pin.OPST { background:var(--opst); } .pin.sel { background:var(--sel); }
   .lm { display:inline-block; padding:2px 6px; background:var(--ok); color:#fff; border-radius:4px; font-size:11px; font-weight:700; border:2px solid #fff; white-space:nowrap; }
   #mapMsg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:24px; text-align:center; color:var(--muted); }
+
+  /* 지역 선택 팝업 (지도 중앙 상단) */
+  #region { position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:900; width:min(460px, calc(100% - 24px)); }
+  #regionBar { width:100%; display:flex; align-items:center; gap:8px; padding:9px 14px; border:0; border-radius:22px; background:var(--panel); box-shadow:0 2px 10px rgba(0,0,0,.18); font:inherit; font-weight:600; color:var(--text); cursor:pointer; }
+  #regionBar .lbl { flex:1; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #regionBar .ph { color:var(--muted); font-weight:500; }
+  #regionPop { display:none; margin-top:8px; padding:12px; background:var(--panel); border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.18); }
+  #region.open #regionPop { display:block; }
+  #regionPop .row select { font-size:13px; }
+
   #detail { position:absolute; right:12px; top:12px; bottom:12px; width:400px; background:var(--panel); border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.18); overflow-y:auto; display:none; z-index:1000; }
   #detail.show { display:block; }
   .x { float:right; border:0; background:none; font-size:20px; cursor:pointer; color:var(--muted); }
@@ -51,8 +60,8 @@
   .warn { background:#fff7e6; color:#8a5a00; padding:10px 12px; border-radius:6px; font-size:13px; margin-top:10px; }
   .err { background:#fdecec; color:#9b1c1c; }
   @media (max-width:800px) {
-    #app { grid-template-columns:1fr; grid-template-rows:55vh auto; height:auto; }
-    .mapwrap { height:55vh; }
+    #app { grid-template-columns:1fr; grid-template-rows:60vh auto; height:auto; }
+    .mapwrap { height:60vh; }
     aside { order:2; }
     #detail { position:fixed; left:8px; right:8px; width:auto; top:8px; bottom:8px; }
   }
@@ -62,74 +71,87 @@
 <div id="app">
   <aside>
     <div class="sec">
-      <h1>실거래 지도 · 용인 / 수원 / 오산</h1>
-      <div class="muted">국토교통부 실거래가를 검색할 때마다 직접 조회합니다</div>
+      <h1>실거래 지도</h1>
+      <div class="muted">아파트 · 오피스텔 실거래가 (국토교통부)</div>
     </div>
 
     <div class="sec">
       <details id="keysBox">
         <summary>API 키 설정 <span id="keyState" class="muted"></span></summary>
-        <label class="f">공공데이터포털 인증키 (Decoding)</label>
+        <label class="f">공공데이터포털 인증키</label>
         <input id="kData" type="password" autocomplete="off">
         <label class="f">카카오 JavaScript 키</label>
         <input id="kKakao" type="password" autocomplete="off">
         <label class="f">브이월드 인증키 (동 경계)</label>
         <input id="kVworld" type="password" autocomplete="off">
         <button class="btn sub" id="saveKeys">저장</button>
-        <div class="muted" style="margin-top:6px">키는 이 브라우저에만 저장됩니다. 카카오 앱의 [플랫폼 키 &gt; JavaScript 키 &gt; JavaScript SDK 도메인]에 <b id="siteUrl"></b> 를 등록해야 지도가 뜹니다.</div>
+        <div class="muted" style="margin-top:6px">키는 이 브라우저에만 저장됩니다. 카카오 [플랫폼 키 &gt; JavaScript 키 &gt; JavaScript SDK 도메인]과 브이월드 서비스 URL에 <b id="siteUrl"></b> 를 등록해야 합니다.</div>
       </details>
-    </div>
-
-    <div class="sec">
-      <label class="f" style="margin-top:0">지역 · 동 선택</label>
-      <div class="row">
-        <select id="si"></select>
-        <select id="gu"></select>
-        <select id="dong"><option value="">동 선택</option></select>
-      </div>
-      <label class="f">기간</label>
-      <select id="months">
-        <option value="3">최근 3개월</option>
-        <option value="6">최근 6개월</option>
-        <option value="12" selected>최근 1년</option>
-        <option value="24">최근 2년</option>
-      </select>
-      <div id="progress" class="muted" style="margin-top:8px">지도에서 동을 누르면 그 동의 실거래를 불러옵니다.</div>
     </div>
 
     <div class="sec" id="filters">
       <label class="f" style="margin-top:0">매물 유형</label>
-      <div class="seg" id="kinds"><button data-v="APT" class="on">아파트</button><button data-v="OPST" class="on">오피스텔</button></div>
+      <div class="seg" id="kinds"><button data-v="APT">아파트</button><button data-v="OPST">오피스텔</button></div>
       <label class="f">거래 방식</label>
-      <div class="seg" id="trade"><button data-v="SALE" class="on">매매</button><button data-v="JEONSE">전세</button><button data-v="WOLSE">월세</button></div>
+      <div class="seg" id="trade"><button data-v="SALE">매매</button><button data-v="JEONSE">전세</button><button data-v="WOLSE">월세</button></div>
       <label class="f">전용면적 <span class="muted" id="areaHint"></span></label>
       <div class="row">
         <input type="number" id="amin" placeholder="최소" min="0" step="any">
         <span style="flex:0">~</span>
         <input type="number" id="amax" placeholder="최대" min="0" step="any">
-        <div class="seg" id="unit" style="flex:0 0 90px"><button data-v="m2" class="on">㎡</button><button data-v="py">평</button></div>
+        <div class="seg" id="unit" style="flex:0 0 90px"><button data-v="m2">㎡</button><button data-v="py">평</button></div>
       </div>
-      <label class="f">정렬</label>
-      <select id="sort">
-        <option value="daycare">이지어린이집 가까운 순</option>
-        <option value="office">광교효성해링턴타워 가까운 순</option>
-        <option value="price">가격 낮은 순</option>
-        <option value="recent">최근 거래 순</option>
-      </select>
+      <div class="row">
+        <div>
+          <label class="f">기간</label>
+          <select id="months">
+            <option value="3">최근 3개월</option>
+            <option value="6">최근 6개월</option>
+            <option value="12">최근 1년</option>
+            <option value="24">최근 2년</option>
+          </select>
+        </div>
+        <div>
+          <label class="f">정렬</label>
+          <select id="sort">
+            <option value="daycare">어린이집 가까운 순</option>
+            <option value="office">해링턴타워 가까운 순</option>
+            <option value="price">가격 낮은 순</option>
+            <option value="recent">최근 거래 순</option>
+          </select>
+        </div>
+      </div>
+      <div id="progress" class="muted" style="margin-top:10px"></div>
     </div>
     <div id="list"></div>
   </aside>
-  <div class="mapwrap"><div id="mapMsg">카카오 JavaScript 키를 저장하면 지도가 표시됩니다.</div><div id="map"></div><div id="detail"></div></div>
+
+  <div class="mapwrap">
+    <div id="mapMsg">카카오 JavaScript 키를 저장하면 지도가 표시됩니다.</div>
+    <div id="map"></div>
+    <div id="region">
+      <button id="regionBar"><span>📍</span><span class="lbl ph" id="regionLbl">지역 선택</span><span>▾</span></button>
+      <div id="regionPop">
+        <div class="row">
+          <select id="sido"></select>
+          <select id="sgg"><option value="">시군구</option></select>
+          <select id="dong"><option value="">동</option></select>
+        </div>
+        <div class="muted" style="margin-top:8px">지도를 확대하면 동 경계가 그려집니다. 동을 직접 눌러도 됩니다.</div>
+      </div>
+    </div>
+    <div id="detail"></div>
+  </div>
 </div>
 
 <script>
 /* ───────── 설정 ───────── */
-const REGIONS = {
-  '용인시': [['41461','처인구'],['41463','기흥구'],['41465','수지구']],
-  '수원시': [['41111','장안구'],['41113','권선구'],['41115','팔달구'],['41117','영통구']],
-  '오산시': [['41370','오산시']],
-};
-const SGG_NAME = Object.fromEntries(Object.entries(REGIONS).flatMap(([si, gs]) => gs.map(([c, g]) => [c, si === g ? si : `${si} ${g}`])));
+const SIDO = [
+  ['11','서울특별시'],['26','부산광역시'],['27','대구광역시'],['28','인천광역시'],['29','광주광역시'],['30','대전광역시'],
+  ['31','울산광역시'],['36','세종특별자치시'],['41','경기도'],['51','강원특별자치도'],['43','충청북도'],['44','충청남도'],
+  ['52','전북특별자치도'],['46','전라남도'],['47','경상북도'],['48','경상남도'],['50','제주특별자치도'],
+];
+const SIDO_NAME = Object.fromEntries(SIDO);
 const LANDMARKS = [
   { key:'daycare', name:'이지어린이집', address:'경기도 용인시 기흥구 예현로35번길 30' },
   { key:'office',  name:'광교효성해링턴타워', address:'경기도 수원시 영통구 광교중앙로 170' },
@@ -143,22 +165,28 @@ const APIS = [
 const PY = 400 / 121; // 1평 = 3.3058㎡
 const TRADE_KO = { SALE:'매매', JEONSE:'전세', WOLSE:'월세' };
 const KIND_KO = { APT:'아파트', OPST:'오피스텔' };
+const BOUNDARY_LEVEL = 8;   // 이 레벨 이하로 확대하면 화면 안 시군구의 동 경계를 자동으로 그림
 
-/* ───────── 저장소 (이 브라우저에만) ───────── */
+/* ───────── 저장소 ───────── */
 const store = {
   get(k, d = null) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
-// 공공데이터포털 키: Encoding 키(%2B 등 포함)를 넣어도 동작하도록 Decoding 형태로 통일
-function normKey(k) {
+function normKey(k) {   // Encoding 키를 넣어도 Decoding 형태로 통일
   k = String(k || '').trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '');
   if (/%[0-9A-Fa-f]{2}/.test(k)) { try { k = decodeURIComponent(k); } catch {} }
   return k;
 }
 const keys = () => { const k = store.get('keys', {}); return { data: normKey(k.data), kakao: String(k.kakao || '').trim(), vworld: String(k.vworld || '').trim() }; };
+const geoCache = store.get('geo', {});
+const saveGeo = () => store.set('geo', geoCache);
 
-/* IndexedDB: 실거래·경계처럼 큰 데이터를 브라우저에 보관 (실패하면 캐시 없이 동작) */
-const idb = (() => {
+/* 사용자 설정 (필터·기간·마지막 동·지도 위치) — 다시 열어도 그대로 */
+const PREF_DEFAULT = { kinds:['APT','OPST'], trade:'SALE', unit:'m2', amin:'', amax:'', months:'12', sort:'daycare', dong:null, view:null };
+const prefs = { ...PREF_DEFAULT, ...store.get('prefs', {}) };
+const savePrefs = () => store.set('prefs', prefs);
+
+const idb = (() => {   // 실거래·경계 등 큰 데이터 보관
   let dbp = null;
   const open = () => dbp ??= new Promise((ok, fail) => {
     const rq = indexedDB.open('realestate', 1);
@@ -169,13 +197,8 @@ const idb = (() => {
     const t = db.transaction('kv', mode), r = fn(t.objectStore('kv'));
     t.oncomplete = () => ok(r?.result); t.onerror = () => fail(t.error);
   }); };
-  return {
-    get: k => tx('readonly', s => s.get(k)).catch(() => undefined),
-    set: (k, v) => tx('readwrite', s => s.put(v, k)).catch(() => {}),
-  };
+  return { get: k => tx('readonly', s => s.get(k)).catch(() => undefined), set: (k, v) => tx('readwrite', s => s.put(v, k)).catch(() => {}) };
 })();
-const geoCache = store.get('geo', {});
-const saveGeo = () => store.set('geo', geoCache);
 
 /* ───────── 유틸 ───────── */
 const $ = s => document.querySelector(s);
@@ -187,6 +210,7 @@ const priceLabel = d => d.rent ? `${shortMan(d.price)}/${d.rent}` : shortMan(d.p
 const priceFull = d => d.rent ? `${fmtMan(d.price)} / 월 ${d.rent}만` : fmtMan(d.price);
 const py = m2 => (m2 / PY).toFixed(1);
 const km = m => m == null ? '-' : m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(2)}km`;
+const asList = v => v == null ? [] : Array.isArray(v) ? v : [v];
 function haversine(a, b) {
   const R = 6371000, r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
@@ -197,23 +221,21 @@ function monthsBack(n) {
   for (let i = 0; i < n; i++) { out.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`); d.setMonth(d.getMonth() - 1); }
   return out;
 }
-async function pool(tasks, n, onDone) {        // 동시 요청 n개 제한
+async function pool(tasks, n, onDone) {
   let i = 0, done = 0;
   const run = async () => { while (i < tasks.length) { const t = tasks[i++]; await t(); onDone?.(++done, tasks.length); } };
   await Promise.all(Array.from({ length: Math.min(n, tasks.length) }, run));
 }
+class ApiError extends Error {}
 
 /* ───────── 국토부 실거래가 ───────── */
-class ApiError extends Error {}
 async function molitFetch(api, sgg, ym) {
   const key = keys().data;
   if (!key) throw new ApiError('공공데이터포털 키를 먼저 저장하세요.');
   const items = [];
   for (let page = 1; ; page++) {
-    const url = `https://apis.data.go.kr/1613000/${api.path}?serviceKey=${encodeURIComponent(key)}&LAWD_CD=${sgg}&DEAL_YMD=${ym}&pageNo=${page}&numOfRows=1000`;
-    const r = await fetch(url);
-    const text = await r.text();
-    const raw = `[HTTP ${r.status}] ${text.replace(/\s+/g, ' ').slice(0, 200)}`;
+    const r = await fetch(`https://apis.data.go.kr/1613000/${api.path}?serviceKey=${encodeURIComponent(key)}&LAWD_CD=${sgg}&DEAL_YMD=${ym}&pageNo=${page}&numOfRows=1000`);
+    const text = await r.text(), raw = `[HTTP ${r.status}] ${text.replace(/\s+/g, ' ').slice(0, 200)}`;
     if (r.status === 403 || r.status === 401) throw new ApiError(`공공데이터포털 키가 거부됐습니다 (${api.key}). 서버 응답: ${raw}`);
     if (!r.ok) throw new ApiError(`국토부 API 오류 ${raw}`);
     const doc = new DOMParser().parseFromString(text, 'text/xml');
@@ -223,8 +245,7 @@ async function molitFetch(api, sgg, ym) {
     if (code && code !== '00' && code !== '000') throw new ApiError(`국토부 API 오류 ${code}: ${doc.querySelector('resultMsg')?.textContent}`);
     const batch = [...doc.querySelectorAll('item')].map(it => Object.fromEntries([...it.children].map(c => [c.tagName, c.textContent.trim()])));
     items.push(...batch);
-    const total = num(doc.querySelector('totalCount')?.textContent) || 0;
-    if (!batch.length || items.length >= total) return items;
+    if (!batch.length || items.length >= (num(doc.querySelector('totalCount')?.textContent) || 0)) return items;
   }
 }
 function normalize(api, it) {
@@ -238,37 +259,37 @@ function normalize(api, it) {
   const jibun = it.jibun || '';
   return {
     building: { id: `${api.kind}|${sgg}|${umd}|${jibun}|${name}`, kind: api.kind, name, sgg, umd, jibun, buildYear: num(it.buildYear),
-                emd: (it.umdCd || '').slice(0, 3) },   // 법정동코드 6~8자리 (경계 데이터와 매칭)
+                emd: (it.umdCd || '').slice(0, 3) },
     deal: { trade, area: Math.round(area * 100) / 100, floor: num(it.floor), price, rent,
             ymd: `${it.dealYear}-${String(it.dealMonth).padStart(2, '0')}-${String(it.dealDay).padStart(2, '0')}`,
             contract: it.contractType || '' },
   };
 }
 
-/* ───────── 카카오 지도 SDK (지도 + 주소 검색) ───────── */
+/* ───────── 카카오 지도 SDK ───────── */
 let sdkPromise = null;
 function loadKakao() {
   if (window.kakao?.maps?.services) return Promise.resolve();
   const key = keys().kakao;
-  if (!key) return Promise.reject(new ApiError('카카오 JavaScript 키를 먼저 저장하세요.'));
+  if (!key) return Promise.reject(new ApiError('카카오 JavaScript 키를 저장하면 지도가 표시됩니다.'));
   sdkPromise ??= new Promise((ok, fail) => {
     const sc = document.createElement('script');
     sc.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&libraries=services&autoload=false`;
     sc.onload = () => kakao.maps.load(ok);
-    sc.onerror = () => { sdkPromise = null; fail(new ApiError(`카카오 지도를 불러오지 못했습니다. JavaScript 키와 [플랫폼 키 > JavaScript 키 > JavaScript SDK 도메인]에 ${location.origin} 이 등록됐는지, 카카오맵 사용 설정이 켜졌는지 확인하세요.`)); };
+    sc.onerror = () => { sdkPromise = null; fail(new ApiError(`카카오 지도를 불러오지 못했습니다. JavaScript 키와 JavaScript SDK 도메인(${location.origin}) 등록, 카카오맵 사용 설정을 확인하세요.`)); };
     document.head.appendChild(sc);
   });
   return sdkPromise;
 }
 const kakaoSearch = (kind, query) => new Promise((ok, fail) => {
-  const S = kakao.maps.services;
+  const SV = kakao.maps.services;
   const cb = (res, status) => {
-    if (status === S.Status.OK) ok({ lat: +res[0].y, lng: +res[0].x });
-    else if (status === S.Status.ZERO_RESULT) ok(null);
-    else fail(new ApiError(`카카오 주소 검색 오류 (${status}). 도메인 등록을 확인하세요.`));
+    if (status === SV.Status.OK) ok({ lat: +res[0].y, lng: +res[0].x });
+    else if (status === SV.Status.ZERO_RESULT) ok(null);
+    else fail(new ApiError(`카카오 주소 검색 오류 (${status})`));
   };
-  if (kind === 'address') new S.Geocoder().addressSearch(query, cb, { size: 1 });
-  else new S.Places().keywordSearch(query, cb, { size: 1 });
+  if (kind === 'address') new SV.Geocoder().addressSearch(query, cb, { size: 1 });
+  else new SV.Places().keywordSearch(query, cb, { size: 1 });
 });
 async function geocode(address, keyword) {
   if (address in geoCache) return geoCache[address];
@@ -278,50 +299,69 @@ async function geocode(address, keyword) {
   geoCache[address] = hit;
   return hit;
 }
+const coordRegion = (lat, lng) => new Promise(ok => new kakao.maps.services.Geocoder().coord2RegionCode(lng, lat, (res, status) => {
+  const b = status === kakao.maps.services.Status.OK && res.find(r => r.region_type === 'B');
+  ok(b ? { sgg: b.code.slice(0, 5), sido: b.region_1depth_name, sggName: b.region_2depth_name } : null);
+}));
 
-/* ───────── 경기도 버스 (GBIS) ───────── */
+/* ───────── 버스: 경기도는 GBIS, 그 외 지역은 국토부 TAGO ───────── */
 const busCache = {};
-async function gbis(path, params, listKey) {
-  const q = new URLSearchParams({ serviceKey: keys().data, format: 'json', ...params });
-  const r = await fetch(`https://apis.data.go.kr/6410000/busstationservice/v2/${path}?${q}`);
-  if (r.status === 403 || r.status === 401) throw new ApiError('버스 API 키가 거부됐습니다. "경기도_정류소 조회" 활용신청을 확인하세요.');
+async function dataGet(url, params) {
+  const q = new URLSearchParams({ serviceKey: keys().data, ...params });
+  const r = await fetch(`${url}?${q}`);
+  if (r.status === 403 || r.status === 401) throw new ApiError(`버스 API 키가 거부됐습니다 (${url.split('/').slice(-2).join('/')}). 공공데이터포털 활용신청을 확인하세요.`);
   if (!r.ok) throw new ApiError(`버스 API 오류 HTTP ${r.status}`);
-  const text = (await r.text()).trim();
+  return (await r.text()).trim();
+}
+function parseGbis(text, listKey) {
   if (text.startsWith('{')) {
     const resp = JSON.parse(text).response || {}, code = +(resp.msgHeader?.resultCode ?? 0);
     if (code === 4) return [];
     if (code !== 0) throw new ApiError(`버스 API 오류 ${code}: ${resp.msgHeader?.resultMessage}`);
-    const v = resp.msgBody?.[listKey];
-    return v == null ? [] : Array.isArray(v) ? v : [v];
+    return asList(resp.msgBody?.[listKey]);
   }
-  const doc = new DOMParser().parseFromString(text, 'text/xml');
-  const code = +(doc.querySelector('resultCode')?.textContent ?? 0);
+  const doc = new DOMParser().parseFromString(text, 'text/xml'), code = +(doc.querySelector('resultCode')?.textContent ?? 0);
   if (code === 4) return [];
   if (code !== 0) throw new ApiError(`버스 API 오류 ${code}`);
   return [...doc.getElementsByTagName(listKey)].map(el => Object.fromEntries([...el.children].map(c => [c.tagName, c.textContent.trim()])));
 }
-async function nearestStops(pt) {
-  const k = `s${pt.lat.toFixed(5)},${pt.lng.toFixed(5)}`;
-  busCache[k] ??= (await gbis('getBusStationAroundListv2', { x: pt.lng.toFixed(6), y: pt.lat.toFixed(6) }, 'busStationAroundList'))
-    .map(s => ({ id: String(s.stationId), name: s.stationName, no: s.mobileNo ? String(s.mobileNo).trim() : '', lat: +s.y, lng: +s.x }))
-    .filter(s => !isNaN(s.lat))
-    .map(s => ({ ...s, dist: haversine(pt, s) }))
-    .sort((a, b) => a.dist - b.dist);
+function parseTago(text) {
+  if (!text.startsWith('{')) throw new ApiError(`TAGO 버스 API 오류: ${text.slice(0, 120)}`);
+  const r = JSON.parse(text).response || {}, code = String(r.header?.resultCode ?? '00');
+  if (code !== '00' && code !== '0') throw new ApiError(`TAGO 버스 API 오류 ${code}: ${r.header?.resultMsg}`);
+  return asList(r.body?.items?.item);
+}
+const GBIS = 'https://apis.data.go.kr/6410000/busstationservice/v2';
+const TAGO = 'https://apis.data.go.kr/1613000/BusSttnInfoInqireService';
+async function nearestStops(b) {
+  const k = `s${b.lat.toFixed(5)},${b.lng.toFixed(5)}`;
+  if (!busCache[k]) {
+    let list;
+    if (b.sgg.startsWith('41')) {
+      list = parseGbis(await dataGet(`${GBIS}/getBusStationAroundListv2`, { x: b.lng.toFixed(6), y: b.lat.toFixed(6), format: 'json' }), 'busStationAroundList')
+        .map(s => ({ src: 'gbis', id: String(s.stationId), name: s.stationName, no: s.mobileNo ? String(s.mobileNo).trim() : '', lat: +s.y, lng: +s.x }));
+    } else {
+      list = parseTago(await dataGet(`${TAGO}/getCrdntPrxmtSttnList`, { gpsLati: b.lat.toFixed(6), gpsLong: b.lng.toFixed(6), numOfRows: 30, pageNo: 1, _type: 'json' }))
+        .map(s => ({ src: 'tago', id: String(s.nodeid), city: String(s.citycode), name: s.nodenm, no: s.nodeno ? String(s.nodeno) : '', lat: +s.gpslati, lng: +s.gpslong }));
+    }
+    busCache[k] = list.filter(s => !isNaN(s.lat)).map(s => ({ ...s, dist: haversine(b, s) })).sort((x, y) => x.dist - y.dist);
+  }
   return busCache[k].slice(0, 3);
 }
-async function stopRoutes(id) {
-  busCache['r' + id] ??= (await gbis('getBusStationViaRouteListv2', { stationId: id }, 'busRouteList'))
-    .map(r => ({ name: String(r.routeName), type: r.routeTypeName || '', dest: r.routeDestName || '' }))
-    .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name, 'ko', { numeric: true }));
-  return busCache['r' + id];
+async function stopRoutes(s) {
+  const k = `r${s.src}${s.id}`;
+  if (!busCache[k]) {
+    const rs = s.src === 'gbis'
+      ? parseGbis(await dataGet(`${GBIS}/getBusStationViaRouteListv2`, { stationId: s.id, format: 'json' }), 'busRouteList')
+          .map(r => ({ name: String(r.routeName), type: r.routeTypeName || '', dest: r.routeDestName || '' }))
+      : parseTago(await dataGet(`${TAGO}/getSttnThrghRouteList`, { cityCode: s.city, nodeid: s.id, numOfRows: 100, pageNo: 1, _type: 'json' }))
+          .map(r => ({ name: String(r.routeno), type: r.routetp || '', dest: r.endnodenm || '' }));
+    busCache[k] = rs.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name, 'ko', { numeric: true }));
+  }
+  return busCache[k];
 }
 
-/* ───────── 상태 ───────── */
-const S = { trade:'SALE', kinds:new Set(['APT','OPST']), unit:'m2', buildings:new Map(), loaded:new Set(), landmarks:[], view:[], sel:null,
-            dongs:new Map(), dong:null };   // dongs: 법정동코드(8자리) → {sgg, code, name, parts, polys}
-let map = null, overlays = [], lmOverlays = [], selArea = null, hoverLabel = null;
-
-/* ───────── 브이월드 법정동 경계 (JSONP — CORS 미지원) ───────── */
+/* ───────── 브이월드 (JSONP — CORS 미지원) ───────── */
 function jsonp(url, timeout = 20000) {
   return new Promise((ok, fail) => {
     const cb = 'vw_' + Math.random().toString(36).slice(2), sc = document.createElement('script');
@@ -333,7 +373,23 @@ function jsonp(url, timeout = 20000) {
     document.head.appendChild(sc);
   });
 }
-function simplifyRing(ring) {               // [lng,lat][] → [lat,lng][] (소수 5자리, 약 5m 이내 점 생략)
+async function vworld(data, filter, geometry) {
+  const key = keys().vworld;
+  if (!key) throw new ApiError('브이월드 인증키를 저장하면 동 경계가 표시됩니다.');
+  const feats = [];
+  for (let page = 1; ; page++) {
+    const d = await jsonp(`https://api.vworld.kr/req/data?service=data&request=GetFeature&data=${data}`
+      + `&key=${encodeURIComponent(key)}&domain=${encodeURIComponent(location.origin)}&attrFilter=${filter}`
+      + `&format=json&geometry=${geometry}&attribute=true&crs=EPSG:4326&size=1000&page=${page}`);
+    const r = d?.response || {};
+    if (r.status === 'NOT_FOUND') break;
+    if (r.status !== 'OK') throw new ApiError(`브이월드 오류: ${r.error?.text || r.status} (${r.error?.code || ''}). 인증키와 서비스 URL(${location.origin}) 등록을 확인하세요.`);
+    feats.push(...(r.result?.featureCollection?.features || []));
+    if (page >= +(r.page?.total || 1)) break;
+  }
+  return feats;
+}
+function simplifyRing(ring) {   // [lng,lat][] → [lat,lng][] (소수 5자리, 약 5m 이내 점 생략)
   const out = [];
   for (const [x, y] of ring) {
     const p = [+y.toFixed(5), +x.toFixed(5)], q = out[out.length - 1];
@@ -341,44 +397,50 @@ function simplifyRing(ring) {               // [lng,lat][] → [lat,lng][] (소�
   }
   return out;
 }
+async function sggList(sido) {      // 시도 → 시군구 목록 (일반구가 있는 시는 구 단위만)
+  const ck = `vwsgg1|${sido}`, cached = await idb.get(ck);
+  if (cached) return cached;
+  const feats = await vworld('LT_C_ADSIGG_INFO', `sig_cd:like:${sido}`, false);
+  let list = feats.map(f => f.properties || {}).filter(p => String(p.sig_cd || '').startsWith(sido))
+    .map(p => ({ code: String(p.sig_cd), name: p.sig_kor_nm, full: p.full_nm || `${SIDO_NAME[sido]} ${p.sig_kor_nm}` }));
+  list = list.filter(s => !(s.code.endsWith('0') && list.some(o => o !== s && o.code.slice(0, 4) === s.code.slice(0, 4))));
+  list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  if (list.length) idb.set(ck, list);
+  return list;
+}
 async function fetchDongs(sgg) {
   const ck = `vw2|${sgg}`, cached = await idb.get(ck);
   if (cached) return cached;
-  const key = keys().vworld;
-  if (!key) throw new ApiError('브이월드 인증키를 저장하면 동 경계가 표시됩니다.');
-  const out = [];
-  for (let page = 1; ; page++) {
-    const d = await jsonp(`https://api.vworld.kr/req/data?service=data&request=GetFeature&data=LT_C_ADEMD_INFO`
-      + `&key=${encodeURIComponent(key)}&domain=${encodeURIComponent(location.origin)}&attrFilter=emd_cd:like:${sgg}`
-      + `&format=json&geometry=true&attribute=true&crs=EPSG:4326&size=1000&page=${page}`);
-    const r = d?.response || {};
-    if (r.status === 'NOT_FOUND') break;
-    if (r.status !== 'OK') throw new ApiError(`브이월드 오류: ${r.error?.text || r.status} (${r.error?.code || ''}). 인증키와 서비스 URL(${location.origin}) 등록을 확인하세요.`);
-    for (const f of r.result?.featureCollection?.features || []) {
-      const p = f.properties || {}, g = f.geometry || {};
-      if (!String(p.emd_cd || '').startsWith(sgg)) continue;
-      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-      out.push({ sgg, code: String(p.emd_cd), name: p.emd_kor_nm || p.full_nm, parts: polys.map(pl => simplifyRing(pl[0])) });
-    }
-    const total = +(r.page?.total || 1);
-    if (page >= total) break;
-  }
+  const out = (await vworld('LT_C_ADEMD_INFO', `emd_cd:like:${sgg}`, true)).map(f => {
+    const p = f.properties || {}, g = f.geometry || {};
+    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+    return { sgg, code: String(p.emd_cd), name: p.emd_kor_nm, full: p.full_nm || '', parts: polys.map(pl => simplifyRing(pl[0])) };
+  }).filter(d => d.code.startsWith(sgg));
   out.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   if (out.length) idb.set(ck, out);
   return out;
 }
 
+/* ───────── 상태 ───────── */
+const S = { buildings:new Map(), loaded:new Set(), landmarks:[], view:[], sel:null,
+            sggs:new Map(),        // 시군구코드 → {code, name, full}
+            dongs:new Map(),       // 법정동코드(8자리) → {sgg, code, name, full, parts, polys}
+            drawn:new Map(),       // 시군구코드 → Promise (경계 그리기)
+            dong:null };
+let map = null, overlays = [], lmOverlays = [], selArea = null, hoverLabel = null;
+const sggFull = sgg => S.sggs.get(sgg)?.full || (() => { const d = [...S.dongs.values()].find(x => x.sgg === sgg); return d?.full ? d.full.slice(0, d.full.lastIndexOf(' ')) : ''; })();
+const sggName = sgg => S.sggs.get(sgg)?.name || sggFull(sgg).split(' ').slice(1).join(' ');
+
+/* ───────── 동 경계 그리기 ───────── */
 const POLY = { base: { fillOpacity: 0.04, strokeOpacity: 0.5, strokeWeight: 1 },
                hover: { fillOpacity: 0.22, strokeOpacity: 0.9, strokeWeight: 2 },
                sel: { fillOpacity: 0.12, strokeOpacity: 1, strokeWeight: 3 } };
-function styleDong(d, mode) {
-  for (const p of d.polys || []) p.setOptions({ ...POLY[mode], strokeColor: '#2f6fed', fillColor: '#2f6fed' });
-}
+const styleDong = (d, mode) => (d.polys || []).forEach(p => p.setOptions({ ...POLY[mode], strokeColor: '#2f6fed', fillColor: '#2f6fed' }));
 function drawDong(d) {
-  d.polys = d.parts.filter(r => r.length > 2).map(r => new kakao.maps.Polygon({
-    map, path: r.map(([la, ln]) => new kakao.maps.LatLng(la, ln)), zIndex: 0, ...POLY.base, strokeColor: '#2f6fed', fillColor: '#2f6fed',
-  }));
   const isSel = () => S.dong?.code === d.code;
+  d.polys = d.parts.filter(r => r.length > 2).map(r => new kakao.maps.Polygon({
+    map, path: r.map(([la, ln]) => new kakao.maps.LatLng(la, ln)), zIndex: 0, ...POLY[isSel() ? 'sel' : 'base'], strokeColor: '#2f6fed', fillColor: '#2f6fed',
+  }));
   for (const p of d.polys) {
     kakao.maps.event.addListener(p, 'mouseover', e => { if (!isSel()) styleDong(d, 'hover'); showHover(d.name, e.latLng); });
     kakao.maps.event.addListener(p, 'mousemove', e => showHover(d.name, e.latLng));
@@ -387,30 +449,35 @@ function drawDong(d) {
   }
 }
 function showHover(name, latLng) {
-  hoverLabel ??= new kakao.maps.CustomOverlay({ yAnchor: 1.6, zIndex: 20, content: '<span class="lm" style="background:#1d2433"></span>' });
+  hoverLabel ??= new kakao.maps.CustomOverlay({ yAnchor: 1.6, zIndex: 20, content: '' });
   hoverLabel.setContent(`<span class="lm" style="background:#1d2433">${esc(name)}</span>`);
   hoverLabel.setPosition(latLng); hoverLabel.setMap(map);
 }
-async function loadBoundaries() {
-  const el = $('#progress');
-  try {
-    let n = 0;
-    await pool(Object.keys(SGG_NAME).map(sgg => async () => {
-      for (const d of await fetchDongs(sgg)) { S.dongs.set(d.code, d); drawDong(d); }
-      el.textContent = `동 경계 불러오는 중 ${++n}/${Object.keys(SGG_NAME).length}`;
-    }), 3);
-    el.textContent = '지도에서 동을 누르면 그 동의 실거래를 불러옵니다.';
-    fillDongs();
-  } catch (e) {
-    el.innerHTML = `<div class="warn${e.message.includes('저장하면') ? '' : ' err'}">${esc(e.message)}</div>`;
+function ensureSgg(sgg) {           // 시군구의 동 경계를 한 번만 받아 그림
+  if (!S.drawn.has(sgg)) {
+    const p = fetchDongs(sgg).then(ds => { for (const d of ds) { S.dongs.set(d.code, d); drawDong(d); } return ds; });
+    p.catch(() => S.drawn.delete(sgg));
+    S.drawn.set(sgg, p);
   }
+  return S.drawn.get(sgg);
 }
-const dongBounds = d => { const b = new kakao.maps.LatLngBounds(); d.parts.flat().forEach(([la, ln]) => b.extend(new kakao.maps.LatLng(la, ln))); return b; };
-const inDong = (b, d) => b.sgg === d.sgg && (b.emd ? b.emd === d.code.slice(5, 8) : (b.umd === d.name || b.umd.startsWith(d.name + ' ')));
+let idleTimer = null;
+async function onIdle() {            // 확대된 화면 안의 시군구 경계를 자동으로 그림
+  const c = map.getCenter();
+  prefs.view = [c.getLat(), c.getLng(), map.getLevel()]; savePrefs();
+  if (map.getLevel() > BOUNDARY_LEVEL || !keys().vworld) return;
+  const bd = map.getBounds(), sw = bd.getSouthWest(), ne = bd.getNorthEast();
+  const pts = [[c.getLat(), c.getLng()], [sw.getLat(), sw.getLng()], [ne.getLat(), ne.getLng()], [sw.getLat(), ne.getLng()], [ne.getLat(), sw.getLng()]];
+  try {
+    const regs = (await Promise.all(pts.map(([la, ln]) => coordRegion(la, ln)))).filter(Boolean);
+    for (const r of regs) if (!S.sggs.has(r.sgg) && r.sggName) S.sggs.set(r.sgg, { code: r.sgg, name: r.sggName, full: `${r.sido} ${r.sggName}` });
+    await Promise.all([...new Set(regs.map(r => r.sgg))].map(ensureSgg));
+  } catch (e) { showError(e); }
+}
 
-/* ───────── 실거래 (구 단위로만 조회 가능 → 지난 달 자료는 브라우저에 보관) ───────── */
+/* ───────── 실거래 (구 단위로만 조회 → 지난 달 자료는 브라우저에 보관) ───────── */
 async function loadSgg(sgg, prog) {
-  const yms = monthsBack(+$('#months').value), recent = new Set(yms.slice(0, 2)), tasks = [];
+  const yms = monthsBack(+prefs.months), recent = new Set(yms.slice(0, 2)), tasks = [];
   for (const api of APIS) for (const ym of yms) {
     const k = `${api.key}|${sgg}|${ym}`;
     if (S.loaded.has(k)) continue;
@@ -428,52 +495,97 @@ async function loadSgg(sgg, prog) {
       S.loaded.add(k);
     });
   }
-  await pool(tasks, 4, (d, t) => prog(`${SGG_NAME[sgg]} 실거래 조회 ${d}/${t}`));
+  await pool(tasks, 4, (d, t) => prog(`${sggName(sgg)} 실거래 조회 ${d}/${t}`));
   for (const b of S.buildings.values()) if (b.sgg === sgg) b.deals.sort((x, y) => y.ymd.localeCompare(x.ymd));
 }
+const inDong = (b, d) => b.sgg === d.sgg && (b.emd ? b.emd === d.code.slice(5, 8) : (b.umd === d.name || b.umd.startsWith(d.name + ' ')));
+const dongBounds = d => { const b = new kakao.maps.LatLngBounds(); d.parts.flat().forEach(([la, ln]) => b.extend(new kakao.maps.LatLng(la, ln))); return b; };
 
 /* ───────── 동 선택 → 그 동만 위치 확인 · 표시 ───────── */
 let selToken = 0;
-async function selectDong(code) {
+const progEl = () => $('#progress');
+function showError(e) {
+  progEl().innerHTML = `<div class="warn${e.message.includes('저장하면') ? '' : ' err'}">${esc(e.message)}</div>`;
+  if (!(e instanceof ApiError)) console.error(e);
+}
+async function selectDong(code, { fit = true } = {}) {
   const d = S.dongs.get(code); if (!d) return;
-  const token = ++selToken, el = $('#progress'), prog = t => { if (token === selToken) el.textContent = t; };
+  const token = ++selToken, prog = t => { if (token === selToken) progEl().textContent = t; };
   const prev = S.dong; S.dong = d; S.sel = null;
   if (prev && prev !== d) styleDong(prev, 'base');
   styleDong(d, 'sel');
+  prefs.dong = code; savePrefs();
   $('#detail').classList.remove('show');
-  syncSelects(d);
-  map.setBounds(dongBounds(d), 30, 30, 30, 30);
+  $('#region').classList.remove('open');
+  updateRegionUI();
+  if (fit) map.setBounds(dongBounds(d), 30, 30, 30, 30);
   render();
   try {
     await ensureLandmarks();
     await loadSgg(d.sgg, prog);
     if (token !== selToken) return;
+    const full = sggFull(d.sgg);
     const need = [...S.buildings.values()].filter(b => inDong(b, d) && b.lat === undefined);
     await pool(need.map(b => async () => {
-      const hit = await geocode(`경기도 ${SGG_NAME[b.sgg]} ${b.umd} ${b.jibun}`.trim(), `${SGG_NAME[b.sgg]} ${b.name}`);
+      const hit = await geocode(`${full} ${b.umd} ${b.jibun}`.trim(), `${sggName(b.sgg)} ${b.name}`);
       b.lat = hit?.lat ?? null; b.lng = hit?.lng ?? null;
     }), 6, (n, t) => prog(`${d.name} 위치 확인 ${n}/${t}`));
     saveGeo();
     if (token !== selToken) return;
     const bs = [...S.buildings.values()].filter(b => inDong(b, d)), miss = bs.filter(b => b.lat == null).length;
-    prog(`${SGG_NAME[d.sgg]} ${d.name} · 건물 ${bs.length}개` + (miss ? ` (위치 못 찾음 ${miss})` : ''));
+    prog(`${sggName(d.sgg)} ${d.name} · 건물 ${bs.length}개` + (miss ? ` (위치 못 찾음 ${miss})` : ''));
     render();
-  } catch (e) {
-    if (token !== selToken) return;
-    el.innerHTML = `<div class="warn err">${esc(e.message)}</div>`;
-    if (!(e instanceof ApiError)) console.error(e);
-  }
+  } catch (e) { if (token === selToken) showError(e); }
 }
 
-/* ───────── 지역으로 이동 ───────── */
+/* ───────── 지역 선택 팝업 ───────── */
+async function fillSido() {
+  $('#sido').innerHTML = '<option value="">시도</option>' + SIDO.map(([c, n]) => `<option value="${c}">${n}</option>`).join('');
+}
+async function fillSgg(sido, selected) {
+  const el = $('#sgg');
+  el.innerHTML = '<option value="">시군구</option>';
+  $('#dong').innerHTML = '<option value="">동</option>';
+  if (!sido) return;
+  el.innerHTML = '<option value="">불러오는 중…</option>';
+  try {
+    const list = await sggList(sido);
+    for (const s of list) S.sggs.set(s.code, s);
+    el.innerHTML = '<option value="">시군구</option>' + list.map(s => `<option value="${s.code}">${esc(s.name)}</option>`).join('');
+    if (selected) el.value = selected;
+  } catch (e) { el.innerHTML = '<option value="">시군구</option>'; showError(e); }
+}
+async function fillDong(sgg, selected) {
+  const el = $('#dong');
+  el.innerHTML = '<option value="">동</option>';
+  if (!sgg) return;
+  el.innerHTML = '<option value="">불러오는 중…</option>';
+  try {
+    const ds = await ensureSgg(sgg);
+    el.innerHTML = '<option value="">동</option>' + ds.map(d => `<option value="${d.code}">${esc(d.name)}</option>`).join('');
+    if (selected) el.value = selected;
+  } catch (e) { el.innerHTML = '<option value="">동</option>'; showError(e); }
+}
+async function updateRegionUI() {
+  const d = S.dong, lbl = $('#regionLbl');
+  lbl.textContent = d ? `${SIDO_NAME[d.sgg.slice(0, 2)] || ''} › ${sggName(d.sgg)} › ${d.name}` : '지역 선택';
+  lbl.classList.toggle('ph', !d);
+  if (!d) return;
+  const sido = d.sgg.slice(0, 2);
+  if ($('#sido').value !== sido) { $('#sido').value = sido; await fillSgg(sido, d.sgg); }
+  else $('#sgg').value = d.sgg;
+  if ($('#dong').querySelector(`option[value="${d.code}"]`)) $('#dong').value = d.code;
+  else await fillDong(d.sgg, d.code);
+}
 async function moveTo(query, level) {
   if (!map) return;
-  const hit = await geocode(query);
+  const hit = await geocode(query).catch(() => null);
   if (!hit) return;
   map.setLevel(level);
   map.setCenter(new kakao.maps.LatLng(hit.lat, hit.lng));
 }
 
+/* ───────── 기준점 ───────── */
 async function ensureLandmarks() {
   if (S.landmarks.length) return;
   for (const lm of LANDMARKS) {
@@ -487,49 +599,48 @@ function drawLandmarks() {
   if (!map) return;
   lmOverlays.forEach(o => o.setMap(null));
   lmOverlays = S.landmarks.filter(l => l.lat != null).map(l => new kakao.maps.CustomOverlay({
-    map, position: new kakao.maps.LatLng(l.lat, l.lng), yAnchor: 1, zIndex: 5,
-    content: `<span class="lm">★ ${esc(l.name)}</span>`,
+    map, position: new kakao.maps.LatLng(l.lat, l.lng), yAnchor: 1, zIndex: 5, content: `<span class="lm">★ ${esc(l.name)}</span>`,
   }));
 }
 const distances = b => S.landmarks.map(l => ({ ...l, d: (b.lat != null && l.lat != null) ? haversine(b, l) : null }));
 
 /* ───────── 필터 · 렌더 ───────── */
 function areaRange() {
-  const f = S.unit === 'py' ? PY : 1, a = parseFloat($('#amin').value), b = parseFloat($('#amax').value);
+  const f = prefs.unit === 'py' ? PY : 1, a = parseFloat(prefs.amin), b = parseFloat(prefs.amax);
   return [isNaN(a) ? 0 : a * f, isNaN(b) ? Infinity : b * f];
 }
 function updateHint() {
   const [lo, hi] = areaRange();
   $('#areaHint').textContent = (lo || hi < Infinity)
-    ? (S.unit === 'py' ? `= ${lo.toFixed(1)} ~ ${hi < Infinity ? hi.toFixed(1) : ''}㎡` : `= ${py(lo)} ~ ${hi < Infinity ? py(hi) : ''}평`) : '';
+    ? (prefs.unit === 'py' ? `= ${lo.toFixed(1)} ~ ${hi < Infinity ? hi.toFixed(1) : ''}㎡` : `= ${py(lo)} ~ ${hi < Infinity ? py(hi) : ''}평`) : '';
 }
 const areaOk = (d, [lo, hi]) => d.area >= lo - 0.01 && d.area <= hi + 0.01;
 
 function render() {
-  const rng = areaRange();
+  const rng = areaRange(), kinds = new Set(prefs.kinds);
   S.view = [];
-  for (const b of S.buildings.values()) {
-    if (!S.dong || b.lat == null || !S.kinds.has(b.kind) || !inDong(b, S.dong)) continue;
-    const ds = b.deals.filter(d => d.trade === S.trade && areaOk(d, rng));
+  if (S.dong) for (const b of S.buildings.values()) {
+    if (b.lat == null || !kinds.has(b.kind) || !inDong(b, S.dong)) continue;
+    const ds = b.deals.filter(d => d.trade === prefs.trade && areaOk(d, rng));
     if (!ds.length) continue;
     S.view.push({ b, latest: ds[0], count: ds.length, dist: distances(b) });
   }
-  const s = $('#sort').value, dk = (v, k) => v.dist.find(x => x.key === k)?.d ?? 1e12;
+  const dk = (v, k) => v.dist.find(x => x.key === k)?.d ?? 1e12;
   S.view.sort({
     daycare: (a, b) => dk(a, 'daycare') - dk(b, 'daycare'),
     office: (a, b) => dk(a, 'office') - dk(b, 'office'),
     price: (a, b) => a.latest.price - b.latest.price || a.latest.rent - b.latest.rent,
     recent: (a, b) => b.latest.ymd.localeCompare(a.latest.ymd),
-  }[s]);
+  }[prefs.sort] || (() => 0));
 
   $('#list').innerHTML = S.view.length
-    ? `<div class="sec muted">${esc(S.dong.name)} ${S.view.length}개 건물 · ${TRADE_KO[S.trade]} 최근 실거래 기준</div>` + S.view.map((v, i) => `
+    ? `<div class="sec muted">${esc(S.dong.name)} ${S.view.length}개 건물 · ${TRADE_KO[prefs.trade]} 최근 실거래 기준</div>` + S.view.map((v, i) => `
       <div class="item" data-i="${i}">
         <div><span class="tag ${v.b.kind}">${KIND_KO[v.b.kind]}</span><b>${esc(v.b.name)}</b> <span class="muted">${esc(v.b.umd)}</span></div>
         <div>${priceFull(v.latest)} <span class="muted">· ${v.latest.area}㎡(${py(v.latest.area)}평) · ${v.latest.floor ?? '-'}층 · ${v.latest.ymd}</span></div>
         <div class="muted">${v.dist.map(x => `${esc(x.name)} ${km(x.d)}`).join(' · ')} · 거래 ${v.count}건</div>
       </div>`).join('')
-    : `<div class="sec muted">${S.dong ? '조건에 맞는 실거래가 없습니다.' : '지도에서 동을 누르거나 위에서 동을 고르세요.'}</div>`;
+    : `<div class="sec muted">${S.dong ? '조건에 맞는 실거래가 없습니다.' : '지도 위 "지역 선택"에서 동을 고르거나, 지도에서 동을 누르세요.'}</div>`;
   $('#list').onclick = e => { const el = e.target.closest('.item'); if (el) select(S.view[+el.dataset.i].b, true); };
 
   if (!map) return;
@@ -543,19 +654,6 @@ function render() {
   }
 }
 
-function fillDongs() {
-  const sgg = $('#gu').value, si = $('#si').value;
-  const codes = sgg ? [sgg] : REGIONS[si].map(([c]) => c);
-  const ds = [...S.dongs.values()].filter(d => codes.includes(d.sgg));
-  $('#dong').innerHTML = `<option value="">${S.dongs.size ? '동 선택' : '동 (경계 불러온 뒤)'}</option>`
-    + ds.map(d => `<option value="${d.code}"${S.dong?.code === d.code ? ' selected' : ''}>${esc(d.name)}</option>`).join('');
-}
-function syncSelects(d) {
-  const si = Object.keys(REGIONS).find(s => REGIONS[s].some(([c]) => c === d.sgg));
-  if ($('#si').value !== si) { $('#si').value = si; $('#si').dispatchEvent(new Event('fill')); }
-  $('#gu').value = d.sgg; fillDongs(); $('#dong').value = d.code;
-}
-
 /* ───────── 상세 ───────── */
 function select(b, pan) {
   S.sel = b.id; selArea = null;
@@ -564,11 +662,10 @@ function select(b, pan) {
   showDetail(b);
   loadStops(b);
 }
-
 function showDetail(b) {
   const rng = areaRange();
   const all = b.deals.filter(d => areaOk(d, rng));
-  const tradeDeals = all.filter(d => d.trade === S.trade);
+  const tradeDeals = all.filter(d => d.trade === prefs.trade);
   const areas = [...new Set(tradeDeals.map(d => d.area))].sort((x, y) => x - y);
   const rows = tradeDeals.filter(d => selArea == null || d.area === selArea);
   const latestOf = t => all.find(d => d.trade === t && (selArea == null || d.area === selArea));
@@ -577,7 +674,7 @@ function showDetail(b) {
     <div class="sec">
       <button class="x" onclick="document.getElementById('detail').classList.remove('show')">×</button>
       <div><span class="tag ${b.kind}">${KIND_KO[b.kind]}</span><b style="font-size:16px">${esc(b.name)}</b></div>
-      <div class="muted">경기도 ${esc(SGG_NAME[b.sgg])} ${esc(b.umd)} ${esc(b.jibun)}${b.buildYear ? ` · ${b.buildYear}년 건축` : ''}</div>
+      <div class="muted">${esc(sggFull(b.sgg))} ${esc(b.umd)} ${esc(b.jibun)}${b.buildYear ? ` · ${b.buildYear}년 건축` : ''}</div>
     </div>
     <div class="sec">
       <table><tr><th>기준점</th><th class="num">직선거리</th></tr>
@@ -589,7 +686,7 @@ function showDetail(b) {
         return `<tr><td>${TRADE_KO[t]}</td><td class="num">${x ? priceFull(x) : '-'}</td><td class="num">${x ? x.ymd : ''}</td></tr>`; }).join('')}</table>
     </div>
     <div class="sec">
-      <b>${TRADE_KO[S.trade]} 실거래 내역</b> <span class="muted">${rows.length}건</span>
+      <b>${TRADE_KO[prefs.trade]} 실거래 내역</b> <span class="muted">${rows.length}건</span>
       <div class="chips"><button class="chip ${selArea == null ? 'on' : ''}" data-a="">전체 면적</button>
         ${areas.map(a => `<button class="chip ${selArea === a ? 'on' : ''}" data-a="${a}">${a}㎡·${py(a)}평</button>`).join('')}</div>
       <table><tr><th>계약일</th><th>전용</th><th class="num">층</th><th class="num">가격</th></tr>
@@ -603,14 +700,15 @@ function showDetail(b) {
   };
   $('#detail').classList.add('show');
 }
-
+let shownStops = [];
 async function loadStops(b) {
   const box = () => document.querySelector(`#stops[data-for="${CSS.escape(b.id)}"]`);
   try {
     const stops = await nearestStops(b);
     if (!box()) return;
+    shownStops = stops;
     box().innerHTML = `<b>가까운 버스 정류장</b> <span class="muted">(누르면 노선)</span>` + (stops.length
-      ? stops.map(s => `<div class="stop" data-id="${esc(s.id)}"><div>${esc(s.name)} <span class="muted">${s.no ? '#' + esc(s.no) : ''}</span><span style="float:right">${km(s.dist)}</span></div><div class="routes"></div></div>`).join('')
+      ? stops.map((s, i) => `<div class="stop" data-i="${i}"><div>${esc(s.name)} <span class="muted">${s.no ? '#' + esc(s.no) : ''}</span><span style="float:right">${km(s.dist)}</span></div><div class="routes"></div></div>`).join('')
       : '<div class="muted">주변 정류장이 조회되지 않았습니다.</div>');
     bindStops();
   } catch (e) {
@@ -618,12 +716,12 @@ async function loadStops(b) {
   }
 }
 function bindStops() {
-  document.querySelectorAll('#stops .stop').forEach(s => s.onclick = async () => {
-    const r = s.querySelector('.routes');
+  document.querySelectorAll('#stops .stop').forEach(el => el.onclick = async () => {
+    const r = el.querySelector('.routes'), s = shownStops[+el.dataset.i];
     if (r.dataset.loaded) { r.hidden = !r.hidden; return; }
     r.innerHTML = '<span class="muted">노선 조회 중…</span>';
     try {
-      const rs = await stopRoutes(s.dataset.id);
+      const rs = await stopRoutes(s);
       r.dataset.loaded = 1;
       r.innerHTML = rs.length ? rs.map(x => `<span class="route" title="${esc(x.type)} → ${esc(x.dest)}">${esc(x.name)}</span>`).join('') : '<span class="muted">노선 없음</span>';
     } catch (e) { r.innerHTML = `<span class="muted">${esc(e.message)}</span>`; }
@@ -638,6 +736,7 @@ function seg(id, onPick, multi = false) {
     onPick(b.dataset.v, b);
   });
 }
+const setSeg = (id, on) => $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', on(b.dataset.v)));
 function showKeyState() {
   const k = keys(), ok = k.data && k.kakao && k.vworld;
   $('#keyState').textContent = ok ? '✓ 저장됨' : '— 필요';
@@ -647,49 +746,56 @@ function showKeyState() {
 
 async function initMap() {
   if (map) return;
-  try {
-    await loadKakao();
-  } catch (e) {
-    $('#mapMsg').textContent = e.message; return;
-  }
+  try { await loadKakao(); } catch (e) { $('#mapMsg').textContent = e.message; return; }
   $('#mapMsg').style.display = 'none';
-  map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(37.255, 127.07), level: 7 });
-  map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.LEFT);
-  drawLandmarks();
+  const [lat, lng, level] = prefs.view || [37.27, 127.1, 7];
+  map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(lat, lng), level });
+  map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+  kakao.maps.event.addListener(map, 'idle', () => { clearTimeout(idleTimer); idleTimer = setTimeout(onIdle, 300); });
   ensureLandmarks().catch(() => {});
-  loadBoundaries();
+  if (prefs.dong) {                    // 마지막으로 보던 동 다시 열기
+    try { await ensureSgg(prefs.dong.slice(0, 5)); selectDong(prefs.dong, { fit: false }); } catch (e) { showError(e); }
+  }
+  onIdle();
 }
 
 (function boot() {
   $('#siteUrl').textContent = location.origin.startsWith('http') ? location.origin : '(GitHub Pages 주소)';
 
-  const si = $('#si'), gu = $('#gu'), dong = $('#dong');
-  si.innerHTML = Object.keys(REGIONS).map(s => `<option>${s}</option>`).join('');
-  const fillGu = () => {
-    const gs = REGIONS[si.value];
-    gu.innerHTML = (gs.length > 1 ? '<option value="">구 전체</option>' : '') + gs.map(([c, g]) => `<option value="${c}">${g}</option>`).join('');
-    fillDongs();
-  };
-  si.addEventListener('fill', fillGu);       // 지도에서 동을 고를 때 (이동 없이 목록만 갱신)
-  si.onchange = () => { fillGu(); moveTo(`경기도 ${si.value}`, 9); };
-  gu.onchange = () => { fillDongs(); gu.value ? moveTo(`경기도 ${SGG_NAME[gu.value]}`, 7) : moveTo(`경기도 ${si.value}`, 9); };
-  dong.onchange = () => { if (dong.value) selectDong(dong.value); };
-  si.value = '용인시'; fillGu(); gu.value = '41463'; fillDongs();
+  // 저장된 설정 복원
+  setSeg('#kinds', v => prefs.kinds.includes(v));
+  setSeg('#trade', v => v === prefs.trade);
+  setSeg('#unit', v => v === prefs.unit);
+  $('#amin').value = prefs.amin; $('#amax').value = prefs.amax;
+  $('#months').value = prefs.months; $('#sort').value = prefs.sort;
 
-  seg('#trade', v => { S.trade = v; render(); if (S.sel) showDetail(S.buildings.get(S.sel)); });
-  seg('#kinds', (v, b) => { b.classList.contains('on') ? S.kinds.add(v) : S.kinds.delete(v); render(); }, true);
+  seg('#trade', v => { prefs.trade = v; savePrefs(); render(); if (S.sel) showDetail(S.buildings.get(S.sel)); });
+  seg('#kinds', () => { prefs.kinds = [...$('#kinds').querySelectorAll('button.on')].map(b => b.dataset.v); savePrefs(); render(); }, true);
   seg('#unit', v => {
-    if (v === S.unit) return;
-    ['#amin', '#amax'].forEach(id => { const x = parseFloat($(id).value); if (!isNaN(x)) $(id).value = (v === 'py' ? x / PY : x * PY).toFixed(1); });
-    S.unit = v; updateHint();
+    if (v === prefs.unit) return;
+    for (const k of ['amin', 'amax']) { const x = parseFloat(prefs[k]); if (!isNaN(x)) prefs[k] = $('#' + k).value = (v === 'py' ? x / PY : x * PY).toFixed(1); }
+    prefs.unit = v; savePrefs(); updateHint();
   });
-  ['#amin', '#amax'].forEach(id => $(id).addEventListener('input', () => { updateHint(); render(); }));
-  $('#sort').onchange = () => render();
-  $('#months').onchange = () => { if (S.dong) selectDong(S.dong.code); };
+  for (const k of ['amin', 'amax']) $('#' + k).addEventListener('input', () => { prefs[k] = $('#' + k).value; savePrefs(); updateHint(); render(); });
+  $('#months').onchange = () => { prefs.months = $('#months').value; savePrefs(); if (S.dong) selectDong(S.dong.code, { fit: false }); };
+  $('#sort').onchange = () => { prefs.sort = $('#sort').value; savePrefs(); render(); };
+
+  // 지역 선택 팝업
+  $('#regionBar').onclick = () => $('#region').classList.toggle('open');
+  fillSido();
+  $('#sido').onchange = () => { const v = $('#sido').value; fillSgg(v); if (v) moveTo(SIDO_NAME[v], 10); };
+  $('#sgg').onchange = async () => {
+    const v = $('#sgg').value; if (!v) return;
+    await fillDong(v);
+    const ds = [...S.dongs.values()].filter(d => d.sgg === v);
+    if (ds.length && map) { const b = new kakao.maps.LatLngBounds(); ds.forEach(d => d.parts.flat().forEach(([la, ln]) => b.extend(new kakao.maps.LatLng(la, ln)))); map.setBounds(b); }
+  };
+  $('#dong').onchange = () => { if ($('#dong').value) selectDong($('#dong').value); };
+
   $('#saveKeys').onclick = () => {
     store.set('keys', { data: $('#kData').value.trim(), kakao: $('#kKakao').value.trim(), vworld: $('#kVworld').value.trim() });
     S.landmarks = []; showKeyState();
-    if (!map) initMap(); else if (!S.dongs.size) loadBoundaries();
+    if (!map) initMap(); else onIdle();
   };
   showKeyState(); updateHint(); render(); initMap();
 })();
