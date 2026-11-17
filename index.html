@@ -5,141 +5,196 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>실거래 지도</title>
 <meta name="description" content="전국 아파트·오피스텔 실거래가 지도">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@esri/calcite-components@3.2.1/dist/calcite/calcite.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@esri/calcite-components@3.2.1/dist/calcite/calcite.esm.js"></script>
 <style>
-  :root { --bg:#f6f7f9; --panel:#fff; --text:#1d2433; --muted:#6b7385; --line:#e3e6ec; --apt:#2f6fed; --opst:#e8772e; --sel:#111827; --ok:#10b981; }
-  * { box-sizing: border-box; }
-  html, body { margin:0; height:100%; font:14px/1.45 -apple-system,"Segoe UI","Malgun Gothic",sans-serif; color:var(--text); background:var(--bg); }
-  #app { display:grid; grid-template-columns:380px 1fr; height:100vh; }
-  aside { background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; }
-  .mapwrap { position:relative; }
-  #map { position:absolute; inset:0; }
-  .sec { padding:14px 16px; border-bottom:1px solid var(--line); }
-  h1 { font-size:16px; margin:0 0 2px; }
-  .muted { color:var(--muted); font-size:12px; }
-  label.f { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
-  select, input { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font:inherit; background:#fff; color:var(--text); }
-  .row { display:flex; gap:6px; align-items:center; } .row > * { flex:1; min-width:0; }
-  .seg { display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
-  .seg button { flex:1; border:0; background:#fff; padding:6px 0; font:inherit; cursor:pointer; color:var(--text); }
-  .seg button + button { border-left:1px solid var(--line); }
-  .seg button.on { background:var(--sel); color:#fff; }
-  .btn { margin-top:12px; width:100%; padding:9px; border:0; border-radius:6px; background:var(--apt); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
-  .btn.sub { background:#eef2f7; color:var(--text); font-weight:500; }
-  details summary { cursor:pointer; font-weight:600; }
-  .item { padding:10px 16px; border-bottom:1px solid var(--line); cursor:pointer; }
-  .item:hover { background:#f3f6fd; }
-  .tag { display:inline-block; font-size:11px; padding:0 5px; border-radius:4px; color:#fff; margin-right:4px; vertical-align:1px; }
-  .tag.APT { background:var(--apt); } .tag.OPST { background:var(--opst); }
-  .pin { display:inline-block; padding:2px 7px; border-radius:10px; color:#fff; font-size:12px; font-weight:600; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.35); border:2px solid #fff; cursor:pointer; }
-  .pin.APT { background:var(--apt); } .pin.OPST { background:var(--opst); } .pin.sel { background:var(--sel); }
-  .lm { display:inline-block; padding:2px 6px; background:var(--ok); color:#fff; border-radius:4px; font-size:11px; font-weight:700; border:2px solid #fff; white-space:nowrap; }
-  #mapMsg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:24px; text-align:center; color:var(--muted); }
-
-  /* 지역 선택 팝업 (지도 중앙 상단) */
-  #region { position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:900; width:min(480px, calc(100% - 24px));
-            padding:8px; background:var(--panel); border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,.18); }
-  #region select { font-size:13px; }
-  .stopdot { display:block; width:9px; height:9px; border-radius:50%; background:#fff; border:2px solid var(--route, #d6336c); cursor:default; }
-  .route { cursor:pointer; border:1px solid transparent; }
-  .route.on { background:var(--route, #d6336c); color:#fff; }
-  .rtbar { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12px; }
-  .rtbar button { border:1px solid var(--line); background:#fff; border-radius:6px; padding:2px 8px; font:inherit; cursor:pointer; }
-
-  #detail { position:absolute; right:12px; top:12px; bottom:12px; width:400px; background:var(--panel); border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.18); overflow-y:auto; display:none; z-index:1000; }
-  #detail.show { display:block; }
-  .x { float:right; border:0; background:none; font-size:20px; cursor:pointer; color:var(--muted); }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { text-align:left; padding:5px 4px; border-bottom:1px solid var(--line); }
-  th { color:var(--muted); font-weight:500; font-size:12px; }
-  .num { text-align:right; font-variant-numeric:tabular-nums; }
-  .chips { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
-  .chip { border:1px solid var(--line); background:#fff; border-radius:12px; padding:2px 9px; font-size:12px; cursor:pointer; color:var(--text); }
-  .chip.on { background:var(--sel); color:#fff; border-color:var(--sel); }
-  .stop { padding:8px 0; border-bottom:1px dashed var(--line); cursor:pointer; }
-  .routes { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
-  .route { font-size:12px; padding:1px 6px; border-radius:4px; background:#eef2f7; }
-  .warn { background:#fff7e6; color:#8a5a00; padding:10px 12px; border-radius:6px; font-size:13px; margin-top:10px; }
-  .err { background:#fdecec; color:#9b1c1c; }
-  @media (max-width:800px) {
-    #app { grid-template-columns:1fr; grid-template-rows:60vh auto; height:auto; }
-    .mapwrap { height:60vh; }
-    aside { order:2; }
-    #detail { position:fixed; left:8px; right:8px; width:auto; top:8px; bottom:8px; }
+  :root {
+    --app-font: "Pretendard Variable", Pretendard, -apple-system, "Malgun Gothic", system-ui, sans-serif;
+    --app-bg: #f3f3f3; --app-surface: #ffffff; --app-border: #e0e0e0; --app-text: #1f1f1f; --app-text-muted: #6b6b6b; --app-ink: #1f1f1f;
+    --app-hover: #fff8d6; --app-selected: #ececec; --app-warn: #9a5b00; --app-error: #b3261e;
+    --opst: #8a5a00;
+    --calcite-font-family: var(--app-font);
+    --calcite-color-brand: var(--app-ink); --calcite-color-brand-hover: #3d3d3d; --calcite-color-brand-press: #000000;
   }
+  html, body { margin: 0; height: 100%; font-family: var(--app-font); color: var(--app-text); background: var(--app-bg); }
+  [hidden] { display: none !important; }
+  #nav { --calcite-color-foreground-1: #232323; --calcite-action-background-color: #232323; }
+  calcite-panel { --calcite-panel-background-color: var(--app-surface); }
+  #start-panel { --calcite-shell-panel-width: 360px; }
+  #end-panel { --calcite-shell-panel-width: 420px; --calcite-shell-panel-max-width: 50vw; }
+  calcite-block calcite-label:last-child { --calcite-label-margin-bottom: 0; }
+
+  .mapwrap { position: relative; width: 100%; height: 100%; }
+  #map { position: absolute; inset: 0; }
+  .map-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; color: var(--app-text-muted); font-size: 13px; text-align: center; }
+
+  /* 지도 상단 지역 선택 (참조: toolbar) */
+  .toolbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
+             display: flex; align-items: center; gap: 6px; padding: 6px; width: min(520px, calc(100% - 24px)); box-sizing: border-box;
+             background: var(--app-surface); border-radius: 4px; box-shadow: 0 1px 6px rgb(0 0 0 / 12%); }
+  .toolbar select { flex: 1; min-width: 0; }
+  .toolbar-status { position: absolute; top: 62px; left: 50%; transform: translateX(-50%); z-index: 10; max-width: min(520px, calc(100% - 24px));
+                    padding: 6px 12px; font-size: 12px; color: var(--app-text-muted); background: var(--app-surface); border-radius: 4px;
+                    box-shadow: 0 1px 6px rgb(0 0 0 / 12%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toolbar-status:empty { display: none; }
+  .toolbar-status.is-error { color: var(--app-error); white-space: normal; }
+
+  select.field { height: 32px; padding: 0 28px 0 10px; font: 13px var(--app-font); color: var(--app-text); background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath d='M3 6l5 5 5-5' fill='none' stroke='%236b6b6b' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center;
+                 border: 1px solid var(--app-border); border-radius: 4px; appearance: none; cursor: pointer; }
+  select.field:hover { border-color: #bdbdbd; }
+  select.field:focus { outline: 2px solid var(--app-ink); outline-offset: -1px; }
+
+  .field-row { display: flex; gap: 8px; align-items: center; }
+  .field-row > * { flex: 1; min-width: 0; }
+  .field-row .sep { flex: none; color: var(--app-text-muted); }
+  .field-row calcite-segmented-control { flex: none; }
+  .label-text { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; font-size: 13px; }
+  .label-hint { color: var(--app-text-muted); font-size: 12px; }
+  .stack { display: grid; gap: 12px; }
+
+  /* 목록 (참조: history-card) */
+  .list { display: grid; gap: 8px; padding: 12px; }
+  .list-head { padding: 12px 16px 0; color: var(--app-text-muted); font-size: 12px; }
+  .card { display: grid; gap: 3px; padding: 12px; background: var(--app-surface); border: 1px solid var(--app-border); border-radius: 6px; cursor: pointer; }
+  .card:hover { background: var(--app-hover); }
+  .card.is-active { border-color: var(--app-ink); box-shadow: inset 3px 0 0 var(--app-ink); }
+  .card-title { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+  .card-price { font-size: 13px; font-weight: 600; }
+  .card-meta { color: var(--app-text-muted); font-size: 12px; }
+  .badge { display: inline-grid; place-items: center; height: 18px; padding: 0 6px; color: #fff; font-size: 11px; font-weight: 600; background: var(--app-ink); border-radius: 4px; }
+  .badge.OPST { background: var(--opst); }
+  .empty-state { display: grid; justify-items: center; gap: 8px; padding: 48px 24px; color: var(--app-text-muted); font-size: 13px; text-align: center; }
+
+  /* 지도 위 표시 */
+  .pin { display: inline-block; padding: 3px 8px; color: #fff; font: 600 12px var(--app-font); white-space: nowrap; background: var(--app-ink); border: 2px solid #fff; border-radius: 4px; box-shadow: 0 1px 4px rgb(0 0 0 / 30%); cursor: pointer; }
+  .pin.OPST { background: var(--opst); }
+  .pin.sel { color: var(--app-ink); background: #ffd43b; }
+  .lm { display: inline-block; padding: 3px 8px; color: var(--app-ink); font: 700 11px var(--app-font); white-space: nowrap; background: #fff; border: 2px solid var(--app-ink); border-radius: 4px; }
+  .hover-tip { display: inline-block; padding: 3px 8px; color: #fff; font: 600 12px var(--app-font); background: rgb(31 31 31 / 88%); border-radius: 4px; white-space: nowrap; }
+  .stopdot { display: block; width: 9px; height: 9px; background: #fff; border: 2px solid var(--route, #d6336c); border-radius: 50%; }
+
+  /* 상세 */
+  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.t th { padding: 6px 8px; color: var(--app-text-muted); font-size: 12px; font-weight: 600; text-align: left; border-bottom: 1px solid var(--app-border); }
+  table.t td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; }
+  .num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+  .chip { padding: 3px 9px; color: var(--app-text); font: 12px var(--app-font); background: #fff; border: 1px solid var(--app-border); border-radius: 999px; cursor: pointer; }
+  .chip:hover { border-color: #bdbdbd; }
+  .chip.on { color: #fff; background: var(--app-ink); border-color: var(--app-ink); }
+  .stop { border-bottom: 1px solid #f0f0f0; }
+  .stop-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 2px; font: 13px var(--app-font); color: var(--app-text); text-align: left; background: none; border: 0; cursor: pointer; }
+  .stop-head:hover { background: #f5f5f5; }
+  .stop-head .grow { flex: 1; }
+  .stop-head calcite-icon { color: var(--app-text-muted); transition: transform 120ms ease; }
+  .stop.is-open .stop-head calcite-icon { transform: rotate(90deg); }
+  .routes { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px 10px 24px; }
+  .route { padding: 2px 8px; font: 600 12px var(--app-font); color: var(--app-text); background: #f3f3f3; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
+  .route:hover { border-color: #bdbdbd; }
+  .route.on { color: #fff; background: var(--route, var(--app-ink)); }
+  .route-info { padding: 0 2px 10px 24px; color: var(--app-text-muted); font-size: 12px; }
+  .route-info b { color: var(--app-text); }
+  .msg-error { color: var(--app-error); font-size: 12px; }
 </style>
 </head>
 <body>
-<div id="app">
-  <aside>
-    <div class="sec">
-      <h1>실거래 지도</h1>
-      <div class="muted">아파트 · 오피스텔 실거래가 (국토교통부)</div>
-    </div>
+<calcite-shell>
+  <calcite-navigation slot="header">
+    <calcite-navigation-logo slot="logo" icon="home" heading="실거래 지도" description="아파트 · 오피스텔 실거래가 (국토교통부)"></calcite-navigation-logo>
+  </calcite-navigation>
 
-    <div class="sec">
-      <details id="keysBox">
-        <summary>API 키 설정 <span id="keyState" class="muted"></span></summary>
-        <label class="f">공공데이터포털 인증키</label>
-        <input id="kData" type="password" autocomplete="off">
-        <label class="f">카카오 JavaScript 키</label>
-        <input id="kKakao" type="password" autocomplete="off">
-        <label class="f">브이월드 인증키 (동 경계)</label>
-        <input id="kVworld" type="password" autocomplete="off">
-        <button class="btn sub" id="saveKeys">저장</button>
-        <div class="muted" style="margin-top:6px">키는 이 브라우저에만 저장됩니다. 카카오 [플랫폼 키 &gt; JavaScript 키 &gt; JavaScript SDK 도메인]과 브이월드 서비스 URL에 <b id="siteUrl"></b> 를 등록해야 합니다.</div>
-      </details>
-    </div>
+  <calcite-shell-panel id="start-panel" slot="panel-start" display-mode="dock">
+    <calcite-action-bar id="nav" slot="action-bar" class="calcite-mode-dark" expand-disabled>
+      <calcite-action-group>
+        <calcite-action data-panel="search" text="검색" icon="search" active></calcite-action>
+      </calcite-action-group>
+      <calcite-action-group slot="actions-end">
+        <calcite-action data-panel="settings" text="설정" icon="gear"></calcite-action>
+      </calcite-action-group>
+    </calcite-action-bar>
 
-    <div class="sec" id="filters">
-      <label class="f" style="margin-top:0">매물 유형</label>
-      <div class="seg" id="kinds"><button data-v="APT">아파트</button><button data-v="OPST">오피스텔</button></div>
-      <label class="f">거래 방식</label>
-      <div class="seg" id="trade"><button data-v="SALE">매매</button><button data-v="JEONSE">전세</button><button data-v="WOLSE">월세</button></div>
-      <label class="f">전용면적 <span class="muted" id="areaHint"></span></label>
-      <div class="row">
-        <input type="number" id="amin" placeholder="최소" min="0" step="any">
-        <span style="flex:0">~</span>
-        <input type="number" id="amax" placeholder="최대" min="0" step="any">
-        <div class="seg" id="unit" style="flex:0 0 90px"><button data-v="m2">㎡</button><button data-v="py">평</button></div>
-      </div>
-      <div class="row">
-        <div>
-          <label class="f">기간</label>
-          <select id="months">
-            <option value="3">최근 3개월</option>
-            <option value="6">최근 6개월</option>
-            <option value="12">최근 1년</option>
-            <option value="24">최근 2년</option>
-          </select>
+    <calcite-panel data-panel-id="search" heading="검색" id="search-panel">
+      <calcite-block heading="조건" description="" id="filter-block" icon-start="sliders-horizontal" collapsible expanded>
+        <div class="stack">
+          <calcite-label>
+            매물 유형
+            <calcite-segmented-control id="kind" width="full" scale="s">
+              <calcite-segmented-control-item value="ALL">전체</calcite-segmented-control-item>
+              <calcite-segmented-control-item value="APT">아파트</calcite-segmented-control-item>
+              <calcite-segmented-control-item value="OPST">오피스텔</calcite-segmented-control-item>
+            </calcite-segmented-control>
+          </calcite-label>
+          <calcite-label>
+            거래 방식
+            <calcite-segmented-control id="trade" width="full" scale="s">
+              <calcite-segmented-control-item value="SALE">매매</calcite-segmented-control-item>
+              <calcite-segmented-control-item value="JEONSE">전세</calcite-segmented-control-item>
+              <calcite-segmented-control-item value="WOLSE">월세</calcite-segmented-control-item>
+            </calcite-segmented-control>
+          </calcite-label>
+          <calcite-label>
+            <span class="label-text">전용면적 <span id="areaHint" class="label-hint"></span></span>
+            <div class="field-row">
+              <calcite-input-number id="amin" placeholder="최소" min="0" scale="s" number-button-type="none"></calcite-input-number>
+              <span class="sep">~</span>
+              <calcite-input-number id="amax" placeholder="최대" min="0" scale="s" number-button-type="none"></calcite-input-number>
+              <calcite-segmented-control id="unit" scale="s">
+                <calcite-segmented-control-item value="m2">㎡</calcite-segmented-control-item>
+                <calcite-segmented-control-item value="py">평</calcite-segmented-control-item>
+              </calcite-segmented-control>
+            </div>
+          </calcite-label>
+          <div class="field-row" style="align-items:start">
+            <div>
+              <span class="label-text">기간</span>
+              <select id="months" class="field" style="width:100%">
+                <option value="3">최근 3개월</option><option value="6">최근 6개월</option>
+                <option value="12">최근 1년</option><option value="24">최근 2년</option>
+              </select>
+            </div>
+            <div>
+              <span class="label-text">정렬</span>
+              <select id="sort" class="field" style="width:100%">
+                <option value="daycare">어린이집 가까운 순</option><option value="office">해링턴타워 가까운 순</option>
+                <option value="price">가격 낮은 순</option><option value="recent">최근 거래 순</option>
+              </select>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="f">정렬</label>
-          <select id="sort">
-            <option value="daycare">어린이집 가까운 순</option>
-            <option value="office">해링턴타워 가까운 순</option>
-            <option value="price">가격 낮은 순</option>
-            <option value="recent">최근 거래 순</option>
-          </select>
+      </calcite-block>
+      <div id="list-head" class="list-head"></div>
+      <div id="list" class="list"></div>
+    </calcite-panel>
+
+    <calcite-panel data-panel-id="settings" heading="설정" description="API 키" hidden>
+      <calcite-block heading="API 키" description="이 브라우저에만 저장됩니다" icon-start="key" collapsible expanded>
+        <div class="stack">
+          <calcite-label>공공데이터포털 인증키<calcite-input id="kData" type="password" scale="s"></calcite-input></calcite-label>
+          <calcite-label>카카오 JavaScript 키<calcite-input id="kKakao" type="password" scale="s"></calcite-input></calcite-label>
+          <calcite-label>브이월드 인증키<calcite-input id="kVworld" type="password" scale="s"></calcite-input></calcite-label>
+          <calcite-button id="saveKeys" width="full" icon-start="save">저장</calcite-button>
+          <span class="label-hint">카카오 [플랫폼 키 › JavaScript 키 › JavaScript SDK 도메인]과 브이월드 서비스 URL에 <b id="siteUrl"></b>를 등록해야 합니다.</span>
         </div>
-      </div>
-      <div id="progress" class="muted" style="margin-top:10px"></div>
-    </div>
-    <div id="list"></div>
-  </aside>
+      </calcite-block>
+    </calcite-panel>
+  </calcite-shell-panel>
 
   <div class="mapwrap">
-    <div id="mapMsg">카카오 JavaScript 키를 저장하면 지도가 표시됩니다.</div>
+    <div id="mapMsg" class="map-msg">카카오 JavaScript 키를 저장하면 지도가 표시됩니다.</div>
     <div id="map"></div>
-    <div id="region">
-      <div class="row">
-        <select id="sido"></select>
-        <select id="sgg"><option value="">시군구</option></select>
-        <select id="dong"><option value="">동</option></select>
-      </div>
+    <div class="toolbar">
+      <select id="sido" class="field"></select>
+      <select id="sgg" class="field"><option value="">시군구</option></select>
+      <select id="dong" class="field"><option value="">읍면동</option></select>
     </div>
-    <div id="detail"></div>
+    <div id="status" class="toolbar-status"></div>
   </div>
-</div>
+
+  <calcite-shell-panel id="end-panel" slot="panel-end" display-mode="dock" collapsed>
+    <calcite-panel id="detail" heading="" description="" closable></calcite-panel>
+  </calcite-shell-panel>
+</calcite-shell>
 
 <script>
 /* ───────── 설정 ───────── */
@@ -162,6 +217,7 @@ const APIS = [
 const PY = 400 / 121; // 1평 = 3.3058㎡
 const TRADE_KO = { SALE:'매매', JEONSE:'전세', WOLSE:'월세' };
 const KIND_KO = { APT:'아파트', OPST:'오피스텔' };
+const DONG_STYLE = { strokeColor: '#1f1f1f', strokeOpacity: 0.9, strokeWeight: 2, fillColor: '#1f1f1f', fillOpacity: 0.06 };
 
 /* ───────── 저장소 ───────── */
 const store = {
@@ -177,12 +233,13 @@ const keys = () => { const k = store.get('keys', {}); return { data: normKey(k.d
 const geoCache = store.get('geo', {});
 const saveGeo = () => store.set('geo', geoCache);
 
-/* 사용자 설정 (필터·기간·마지막 동·지도 위치) — 다시 열어도 그대로 */
-const PREF_DEFAULT = { kinds:['APT','OPST'], trade:'SALE', unit:'m2', amin:'', amax:'', months:'12', sort:'daycare', dong:null, view:null };
+/* 사용자 설정 (필터·기간·마지막 동·지도 위치) */
+const PREF_DEFAULT = { kind:'ALL', trade:'SALE', unit:'m2', amin:'', amax:'', months:'12', sort:'daycare', dong:null, view:null };
 const prefs = { ...PREF_DEFAULT, ...store.get('prefs', {}) };
+if (Array.isArray(prefs.kinds)) { prefs.kind = prefs.kinds.length === 1 ? prefs.kinds[0] : 'ALL'; delete prefs.kinds; }
 const savePrefs = () => store.set('prefs', prefs);
 
-const idb = (() => {   // 실거래·경계 등 큰 데이터 보관
+const idb = (() => {
   let dbp = null;
   const open = () => dbp ??= new Promise((ok, fail) => {
     const rq = indexedDB.open('realestate', 1);
@@ -227,7 +284,7 @@ class ApiError extends Error {}
 /* ───────── 국토부 실거래가 ───────── */
 async function molitFetch(api, sgg, ym) {
   const key = keys().data;
-  if (!key) throw new ApiError('공공데이터포털 키를 먼저 저장하세요.');
+  if (!key) throw new ApiError('설정에서 공공데이터포털 키를 저장하세요.');
   const items = [];
   for (let page = 1; ; page++) {
     const r = await fetch(`https://apis.data.go.kr/1613000/${api.path}?serviceKey=${encodeURIComponent(key)}&LAWD_CD=${sgg}&DEAL_YMD=${ym}&pageNo=${page}&numOfRows=1000`);
@@ -267,7 +324,7 @@ let sdkPromise = null;
 function loadKakao() {
   if (window.kakao?.maps?.services) return Promise.resolve();
   const key = keys().kakao;
-  if (!key) return Promise.reject(new ApiError('카카오 JavaScript 키를 저장하면 지도가 표시됩니다.'));
+  if (!key) return Promise.reject(new ApiError('설정에서 카카오 JavaScript 키를 저장하면 지도가 표시됩니다.'));
   sdkPromise ??= new Promise((ok, fail) => {
     const sc = document.createElement('script');
     sc.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&libraries=services&autoload=false`;
@@ -329,6 +386,8 @@ function parseTago(text) {
 }
 const GBIS = 'https://apis.data.go.kr/6410000/busstationservice/v2';
 const TAGO = 'https://apis.data.go.kr/1613000/BusSttnInfoInqireService';
+const GBIS_ROUTE = 'https://apis.data.go.kr/6410000/busrouteservice/v2';
+const TAGO_ROUTE = 'https://apis.data.go.kr/1613000/BusRouteInfoInqireService';
 async function nearestStops(b) {
   const k = `s${b.lat.toFixed(5)},${b.lng.toFixed(5)}`;
   if (!busCache[k]) {
@@ -356,9 +415,7 @@ async function stopRoutes(s) {
   }
   return busCache[k];
 }
-/* 노선 경로 + 정류장: 경기도는 GBIS(도로 선형 제공), 그 외는 TAGO(정류장 순서를 이어 그림) */
-const GBIS_ROUTE = 'https://apis.data.go.kr/6410000/busrouteservice/v2';
-const TAGO_ROUTE = 'https://apis.data.go.kr/1613000/BusRouteInfoInqireService';
+/* 노선 경로 + 정류장: 경기도는 GBIS(도로 선형), 그 외는 TAGO(정류장 순서를 이어 그림) */
 async function routePath(r) {
   const k = `p${r.src}${r.id}`;
   if (!busCache[k]) {
@@ -379,30 +436,6 @@ async function routePath(r) {
   }
   return busCache[k];
 }
-const ROUTE_COLORS = ['#d6336c', '#7048e8', '#0c8599', '#e67700', '#2b8a3e'];
-let routeLayer = [], shownRoute = null;
-function clearRoute() { routeLayer.forEach(o => o.setMap(null)); routeLayer = []; shownRoute = null; document.querySelectorAll('.route.on').forEach(x => x.classList.remove('on')); $('#rtbar')?.remove(); }
-async function showRoute(r, chip) {
-  if (shownRoute === `${r.src}${r.id}`) { clearRoute(); return; }
-  clearRoute();
-  shownRoute = `${r.src}${r.id}`;
-  const color = ROUTE_COLORS[[...r.id].reduce((a, c) => a + c.charCodeAt(0), 0) % ROUTE_COLORS.length];
-  chip.classList.add('on'); chip.style.setProperty('--route', color);
-  const p = await routePath(r);
-  if (shownRoute !== `${r.src}${r.id}`) return;
-  if (p.line.length < 2) throw new ApiError('노선 경로 정보가 없습니다.');
-  const path = p.line.map(([la, ln]) => new kakao.maps.LatLng(la, ln));
-  routeLayer.push(new kakao.maps.Polyline({ map, path, strokeWeight: 5, strokeColor: color, strokeOpacity: 0.85, zIndex: 3 }));
-  for (const s of p.stops) {
-    const el = document.createElement('span');
-    el.className = 'stopdot'; el.title = s.name; el.style.setProperty('--route', color);
-    routeLayer.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(s.lat, s.lng), content: el, zIndex: 4 }));
-  }
-  const b = new kakao.maps.LatLngBounds(); path.forEach(x => b.extend(x)); map.setBounds(b, 40, 40, 40, 40);
-  chip.closest('.stop').insertAdjacentHTML('beforeend',
-    `<div class="rtbar" id="rtbar"><span><b>${esc(r.name)}</b> ${esc(r.type)} · ${esc(r.dest)} 방면 · 정류장 ${p.stops.length}개</span><button type="button">경로 지우기</button></div>`);
-  $('#rtbar button').onclick = e => { e.stopPropagation(); clearRoute(); };
-}
 
 /* ───────── 브이월드 (JSONP — CORS 미지원) ───────── */
 function jsonp(url, timeout = 20000) {
@@ -418,7 +451,7 @@ function jsonp(url, timeout = 20000) {
 }
 async function vworld(data, filter, geometry) {
   const key = keys().vworld;
-  if (!key) throw new ApiError('브이월드 인증키를 저장하면 동 경계가 표시됩니다.');
+  if (!key) throw new ApiError('설정에서 브이월드 인증키를 저장하면 동 경계가 표시됩니다.');
   const feats = [];
   for (let page = 1; ; page++) {
     const d = await jsonp(`https://api.vworld.kr/req/data?service=data&request=GetFeature&data=${data}`
@@ -440,6 +473,11 @@ function simplifyRing(ring) {   // [lng,lat][] → [lat,lng][] (소수 5자리, 
   }
   return out;
 }
+const toDong = (f, sgg) => {
+  const p = f.properties || {}, g = f.geometry || {};
+  const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+  return { sgg, code: String(p.emd_cd), name: p.emd_kor_nm, full: p.full_nm || '', parts: polys.map(pl => simplifyRing(pl[0])) };
+};
 async function sggList(sido) {      // 시도 → 시군구 목록 (일반구가 있는 시는 구 단위만)
   const ck = `vwsgg1|${sido}`, cached = await idb.get(ck);
   if (cached) return cached;
@@ -454,11 +492,7 @@ async function sggList(sido) {      // 시도 → 시군구 목록 (일반구가
 async function fetchDongs(sgg) {
   const ck = `vw2|${sgg}`, cached = await idb.get(ck);
   if (cached) return cached;
-  const out = (await vworld('LT_C_ADEMD_INFO', `emd_cd:like:${sgg}`, true)).map(f => {
-    const p = f.properties || {}, g = f.geometry || {};
-    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-    return { sgg, code: String(p.emd_cd), name: p.emd_kor_nm, full: p.full_nm || '', parts: polys.map(pl => simplifyRing(pl[0])) };
-  }).filter(d => d.code.startsWith(sgg));
+  const out = (await vworld('LT_C_ADEMD_INFO', `emd_cd:like:${sgg}`, true)).map(f => toDong(f, sgg)).filter(d => d.code.startsWith(sgg));
   out.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   if (out.length) idb.set(ck, out);
   return out;
@@ -472,15 +506,18 @@ const S = { buildings:new Map(), loaded:new Set(), landmarks:[], view:[], sel:nu
 let map = null, overlays = [], lmOverlays = [], selArea = null, hoverLabel = null;
 const sggFull = sgg => S.sggs.get(sgg)?.full || (() => { const d = [...S.dongs.values()].find(x => x.sgg === sgg); return d?.full ? d.full.slice(0, d.full.lastIndexOf(' ')) : ''; })();
 const sggName = sgg => S.sggs.get(sgg)?.name || sggFull(sgg).split(' ').slice(1).join(' ');
+const relayout = () => setTimeout(() => map?.relayout(), 260);
 
-/* ───────── 동 경계: 마우스 아래 동만 그림 (전국 어디서든, 경계는 그때그때 받아 캐시) ───────── */
-const OUTLINE = { hover: { strokeColor: '#2f6fed', strokeOpacity: 0.9, strokeWeight: 2, fillColor: '#2f6fed', fillOpacity: 0.08 },
-                  sel:   { strokeColor: '#1d2433', strokeOpacity: 0.8, strokeWeight: 2, strokeStyle: 'shortdash', fillOpacity: 0 } };
+/* ───────── 상태 표시 (지도 상단) ───────── */
+function status(text, isError = false) { const el = $('#status'); el.textContent = text || ''; el.classList.toggle('is-error', isError); }
+function showError(e) { status(e.message, !e.message.includes('저장하면')); if (!(e instanceof ApiError)) console.error(e); }
+
+/* ───────── 동 경계: 마우스 아래 동과 선택한 동만 같은 스타일로 그림 ───────── */
 const outlines = { hover: [], sel: [] };
 function setOutline(kind, d) {
   outlines[kind].forEach(p => p.setMap(null));
   outlines[kind] = d ? d.parts.filter(r => r.length > 2).map(r => new kakao.maps.Polygon({
-    map, path: r.map(([la, ln]) => new kakao.maps.LatLng(la, ln)), zIndex: kind === 'sel' ? 1 : 2, ...OUTLINE[kind],
+    map, path: r.map(([la, ln]) => new kakao.maps.LatLng(la, ln)), zIndex: 1, ...DONG_STYLE,
   })) : [];
 }
 function inRing(lat, lng, ring) {
@@ -492,9 +529,8 @@ function inRing(lat, lng, ring) {
   return inside;
 }
 const inDongArea = (d, lat, lng) => d?.parts.some(r => inRing(lat, lng, r));
-
 const dongReq = new Map();
-function fetchDong(code) {            // 법정동 하나의 경계 (시군구 목록 캐시 → 단건 캐시 → 브이월드)
+function fetchDong(code) {
   if (S.dongs.has(code)) return Promise.resolve(S.dongs.get(code));
   if (!dongReq.has(code)) dongReq.set(code, (async () => {
     const list = await idb.get(`vw2|${code.slice(0, 5)}`);
@@ -502,9 +538,7 @@ function fetchDong(code) {            // 법정동 하나의 경계 (시군구 �
     if (!d) {
       const f = (await vworld('LT_C_ADEMD_INFO', `emd_cd:=:${code}`, true))[0];
       if (!f) return null;
-      const p = f.properties || {}, g = f.geometry || {};
-      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-      d = { sgg: code.slice(0, 5), code, name: p.emd_kor_nm, full: p.full_nm || '', parts: polys.map(pl => simplifyRing(pl[0])) };
+      d = toDong(f, code.slice(0, 5));
       idb.set(`vwemd|${code}`, d);
     }
     S.dongs.set(code, d);
@@ -512,7 +546,7 @@ function fetchDong(code) {            // 법정동 하나의 경계 (시군구 �
   })().finally(() => dongReq.delete(code)));
   return dongReq.get(code);
 }
-async function dongAt(lat, lng) {     // 좌표 → 법정동(경계 포함)
+async function dongAt(lat, lng) {
   const cur = [hoverDong, S.dong].find(d => inDongArea(d, lat, lng));
   if (cur) return cur;
   const r = await coordRegion(lat, lng);
@@ -522,7 +556,7 @@ async function dongAt(lat, lng) {     // 좌표 → 법정동(경계 포함)
 }
 function showHover(name, latLng) {
   hoverLabel ??= new kakao.maps.CustomOverlay({ yAnchor: 1.6, zIndex: 20, content: '' });
-  hoverLabel.setContent(`<span class="lm" style="background:#1d2433">${esc(name)}</span>`);
+  hoverLabel.setContent(`<span class="hover-tip">${esc(name)}</span>`);
   hoverLabel.setPosition(latLng); hoverLabel.setMap(map);
 }
 let hoverDong = null, hoverTimer = null, hoverSeq = 0;
@@ -549,16 +583,13 @@ async function onMapClick(latLng) {
     if (d && d.code !== S.dong?.code) selectDong(d.code);
   } catch (e) { showError(e); }
 }
-async function ensureSgg(sgg) {       // 시군구 전체 동 목록 (드롭다운용)
+async function ensureSgg(sgg) {
   const ds = await fetchDongs(sgg);
   for (const d of ds) if (!S.dongs.has(d.code)) S.dongs.set(d.code, d);
   return ds;
 }
 let idleTimer = null;
-function onIdle() {
-  const c = map.getCenter();
-  prefs.view = [c.getLat(), c.getLng(), map.getLevel()]; savePrefs();
-}
+function onIdle() { const c = map.getCenter(); prefs.view = [c.getLat(), c.getLng(), map.getLevel()]; savePrefs(); }
 
 /* ───────── 실거래 (구 단위로만 조회 → 지난 달 자료는 브라우저에 보관) ───────── */
 async function loadSgg(sgg, prog) {
@@ -568,7 +599,7 @@ async function loadSgg(sgg, prog) {
     if (S.loaded.has(k)) continue;
     tasks.push(async () => {
       const ck = `molit|${k}`;
-      let items = recent.has(ym) ? undefined : await idb.get(ck);   // 최근 2개월은 신고 지연분이 있어 항상 새로 받음
+      let items = recent.has(ym) ? undefined : await idb.get(ck);
       if (!items) { items = await molitFetch(api, sgg, ym); if (!recent.has(ym)) idb.set(ck, items); }
       for (const it of items) {
         const n = normalize(api, it); if (!n) continue;
@@ -588,13 +619,8 @@ const dongBounds = d => { const b = new kakao.maps.LatLngBounds(); d.parts.flat(
 
 /* ───────── 동 선택 → 그 동만 위치 확인 · 표시 ───────── */
 let selToken = 0;
-const progEl = () => $('#progress');
-function showError(e) {
-  progEl().innerHTML = `<div class="warn${e.message.includes('저장하면') ? '' : ' err'}">${esc(e.message)}</div>`;
-  if (!(e instanceof ApiError)) console.error(e);
-}
 async function selectDong(code, { fit = true } = {}) {
-  const token = ++selToken, prog = t => { if (token === selToken) progEl().textContent = t; };
+  const token = ++selToken, prog = t => { if (token === selToken) status(t); };
   let d;
   try { d = await fetchDong(code); } catch (e) { return showError(e); }
   if (!d || token !== selToken) return;
@@ -617,20 +643,18 @@ async function selectDong(code, { fit = true } = {}) {
     }), 6, (n, t) => prog(`${d.name} 위치 확인 ${n}/${t}`));
     saveGeo();
     if (token !== selToken) return;
-    const bs = [...S.buildings.values()].filter(b => inDong(b, d)), miss = bs.filter(b => b.lat == null).length;
-    prog(`${sggName(d.sgg)} ${d.name} · 건물 ${bs.length}개` + (miss ? ` (위치 못 찾음 ${miss})` : ''));
+    const miss = [...S.buildings.values()].filter(b => inDong(b, d) && b.lat == null).length;
+    status(miss ? `위치를 찾지 못한 건물 ${miss}개는 목록에서 빠졌습니다.` : '');
     render();
   } catch (e) { if (token === selToken) showError(e); }
 }
 
-/* ───────── 지역 선택 팝업 ───────── */
-async function fillSido() {
-  $('#sido').innerHTML = '<option value="">시도</option>' + SIDO.map(([c, n]) => `<option value="${c}">${n}</option>`).join('');
-}
+/* ───────── 지역 선택 (지도 상단) ───────── */
+function fillSido() { $('#sido').innerHTML = '<option value="">시도</option>' + SIDO.map(([c, n]) => `<option value="${c}">${n}</option>`).join(''); }
 async function fillSgg(sido, selected) {
   const el = $('#sgg');
   el.innerHTML = '<option value="">시군구</option>';
-  $('#dong').innerHTML = '<option value="">동</option>';
+  $('#dong').innerHTML = '<option value="">읍면동</option>';
   if (!sido) return;
   el.innerHTML = '<option value="">불러오는 중…</option>';
   try {
@@ -642,14 +666,14 @@ async function fillSgg(sido, selected) {
 }
 async function fillDong(sgg, selected) {
   const el = $('#dong');
-  el.innerHTML = '<option value="">동</option>';
+  el.innerHTML = '<option value="">읍면동</option>';
   if (!sgg) return;
   el.innerHTML = '<option value="">불러오는 중…</option>';
   try {
     const ds = await ensureSgg(sgg);
-    el.innerHTML = '<option value="">동</option>' + ds.map(d => `<option value="${d.code}">${esc(d.name)}</option>`).join('');
+    el.innerHTML = '<option value="">읍면동</option>' + ds.map(d => `<option value="${d.code}">${esc(d.name)}</option>`).join('');
     if (selected) el.value = selected;
-  } catch (e) { el.innerHTML = '<option value="">동</option>'; showError(e); }
+  } catch (e) { el.innerHTML = '<option value="">읍면동</option>'; showError(e); }
 }
 async function updateRegionUI() {
   const d = S.dong;
@@ -696,15 +720,19 @@ function areaRange() {
 function updateHint() {
   const [lo, hi] = areaRange();
   $('#areaHint').textContent = (lo || hi < Infinity)
-    ? (prefs.unit === 'py' ? `= ${lo.toFixed(1)} ~ ${hi < Infinity ? hi.toFixed(1) : ''}㎡` : `= ${py(lo)} ~ ${hi < Infinity ? py(hi) : ''}평`) : '';
+    ? (prefs.unit === 'py' ? `${lo.toFixed(1)} ~ ${hi < Infinity ? hi.toFixed(1) : ''}㎡` : `${py(lo)} ~ ${hi < Infinity ? py(hi) : ''}평`) : '';
+  const parts = [prefs.kind === 'ALL' ? '아파트·오피스텔' : KIND_KO[prefs.kind], TRADE_KO[prefs.trade]];
+  if (lo || hi < Infinity) parts.push(`${prefs.amin || 0}~${prefs.amax || ''}${prefs.unit === 'py' ? '평' : '㎡'}`);
+  parts.push($('#months').selectedOptions[0]?.textContent || '');
+  $('#filter-block').description = parts.join(' · ');
 }
 const areaOk = (d, [lo, hi]) => d.area >= lo - 0.01 && d.area <= hi + 0.01;
 
 function render() {
-  const rng = areaRange(), kinds = new Set(prefs.kinds);
+  const rng = areaRange();
   S.view = [];
   if (S.dong) for (const b of S.buildings.values()) {
-    if (b.lat == null || !kinds.has(b.kind) || !inDong(b, S.dong)) continue;
+    if (b.lat == null || (prefs.kind !== 'ALL' && b.kind !== prefs.kind) || !inDong(b, S.dong)) continue;
     const ds = b.deals.filter(d => d.trade === prefs.trade && areaOk(d, rng));
     if (!ds.length) continue;
     S.view.push({ b, latest: ds[0], count: ds.length, dist: distances(b) });
@@ -717,15 +745,17 @@ function render() {
     recent: (a, b) => b.latest.ymd.localeCompare(a.latest.ymd),
   }[prefs.sort] || (() => 0));
 
+  $('#list-head').textContent = S.dong ? `${sggName(S.dong.sgg)} ${S.dong.name} · ${S.view.length}개 건물 · ${TRADE_KO[prefs.trade]} 최근 실거래` : '';
   $('#list').innerHTML = S.view.length
-    ? `<div class="sec muted">${esc(S.dong.name)} ${S.view.length}개 건물 · ${TRADE_KO[prefs.trade]} 최근 실거래 기준</div>` + S.view.map((v, i) => `
-      <div class="item" data-i="${i}">
-        <div><span class="tag ${v.b.kind}">${KIND_KO[v.b.kind]}</span><b>${esc(v.b.name)}</b> <span class="muted">${esc(v.b.umd)}</span></div>
-        <div>${priceFull(v.latest)} <span class="muted">· ${v.latest.area}㎡(${py(v.latest.area)}평) · ${v.latest.floor ?? '-'}층 · ${v.latest.ymd}</span></div>
-        <div class="muted">${v.dist.map(x => `${esc(x.name)} ${km(x.d)}`).join(' · ')} · 거래 ${v.count}건</div>
+    ? S.view.map((v, i) => `
+      <div class="card${S.sel === v.b.id ? ' is-active' : ''}" data-i="${i}">
+        <div class="card-title"><span class="badge ${v.b.kind}">${KIND_KO[v.b.kind]}</span>${esc(v.b.name)}</div>
+        <div class="card-price">${priceFull(v.latest)}</div>
+        <div class="card-meta">${v.latest.area}㎡ (${py(v.latest.area)}평) · ${v.latest.floor ?? '-'}층 · ${v.latest.ymd} · 거래 ${v.count}건</div>
+        <div class="card-meta">${v.dist.map(x => `${esc(x.name)} ${km(x.d)}`).join(' · ')}</div>
       </div>`).join('')
-    : `<div class="sec muted">${S.dong ? '조건에 맞는 실거래가 없습니다.' : '지도 위에서 동을 고르거나, 지도에서 동을 누르세요.'}</div>`;
-  $('#list').onclick = e => { const el = e.target.closest('.item'); if (el) select(S.view[+el.dataset.i].b, true); };
+    : `<div class="empty-state"><calcite-icon icon="${S.dong ? 'filter' : 'map-pin'}" scale="l"></calcite-icon>${S.dong ? '조건에 맞는 실거래가 없습니다.' : '지도에서 동을 누르거나<br>상단에서 지역을 고르세요.'}</div>`;
+  $('#list').onclick = e => { const el = e.target.closest('.card'); if (el) select(S.view[+el.dataset.i].b, true); };
 
   if (!map) return;
   overlays.forEach(o => o.setMap(null)); overlays = [];
@@ -734,11 +764,11 @@ function render() {
     el.className = `pin ${v.b.kind}${S.sel === v.b.id ? ' sel' : ''}`;
     el.title = v.b.name; el.textContent = priceLabel(v.latest);
     el.onclick = () => select(v.b, false);
-    overlays.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(v.b.lat, v.b.lng), content: el, yAnchor: 1, zIndex: S.sel === v.b.id ? 10 : 1 }));
+    overlays.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(v.b.lat, v.b.lng), content: el, yAnchor: 1, zIndex: S.sel === v.b.id ? 10 : 3 }));
   }
 }
 
-/* ───────── 상세 ───────── */
+/* ───────── 상세 (오른쪽 패널) ───────── */
 function select(b, pan) {
   if (S.sel !== b.id) clearRoute();
   S.sel = b.id; selArea = null;
@@ -754,37 +784,44 @@ function showDetail(b) {
   const areas = [...new Set(tradeDeals.map(d => d.area))].sort((x, y) => x - y);
   const rows = tradeDeals.filter(d => selArea == null || d.area === selArea);
   const latestOf = t => all.find(d => d.trade === t && (selArea == null || d.area === selArea));
-  const stopsHtml = $('#stops')?.dataset.for === b.id ? $('#stops').innerHTML : '<b>가까운 버스 정류장</b><div class="muted">불러오는 중…</div>';
-  $('#detail').innerHTML = `
-    <div class="sec">
-      <button class="x" onclick="closeDetail()">×</button>
-      <div><span class="tag ${b.kind}">${KIND_KO[b.kind]}</span><b style="font-size:16px">${esc(b.name)}</b></div>
-      <div class="muted">${esc(sggFull(b.sgg))} ${esc(b.umd)} ${esc(b.jibun)}${b.buildYear ? ` · ${b.buildYear}년 건축` : ''}</div>
-    </div>
-    <div class="sec">
-      <table><tr><th>기준점</th><th class="num">직선거리</th></tr>
-      ${distances(b).map(x => `<tr><td>${esc(x.name)}</td><td class="num">${km(x.d)}</td></tr>`).join('')}</table>
-    </div>
-    <div class="sec">
-      <table><tr><th>최근 실거래</th><th class="num">가격</th><th class="num">계약일</th></tr>
-      ${['SALE','JEONSE','WOLSE'].map(t => { const x = latestOf(t);
+  const keepStops = $('#stops')?.dataset.for === b.id ? $('#stops') : null;
+  const panel = $('#detail');
+  panel.heading = b.name;
+  panel.description = `${KIND_KO[b.kind]} · ${sggFull(b.sgg)} ${b.umd} ${b.jibun}${b.buildYear ? ` · ${b.buildYear}년` : ''}`;
+  panel.closed = false;
+  panel.innerHTML = `
+    <calcite-block heading="거리" description="직선거리" icon-start="measure-line" collapsible expanded>
+      <table class="t">${distances(b).map(x => `<tr><td>${esc(x.name)}</td><td class="num">${km(x.d)}</td></tr>`).join('')}</table>
+    </calcite-block>
+    <calcite-block heading="최근 실거래" icon-start="clock" collapsible expanded>
+      <table class="t">${['SALE','JEONSE','WOLSE'].map(t => { const x = latestOf(t);
         return `<tr><td>${TRADE_KO[t]}</td><td class="num">${x ? priceFull(x) : '-'}</td><td class="num">${x ? x.ymd : ''}</td></tr>`; }).join('')}</table>
-    </div>
-    <div class="sec">
-      <b>${TRADE_KO[prefs.trade]} 실거래 내역</b> <span class="muted">${rows.length}건</span>
+    </calcite-block>
+    <calcite-block heading="${TRADE_KO[prefs.trade]} 실거래 내역" description="${rows.length}건" icon-start="table" collapsible expanded>
       <div class="chips"><button class="chip ${selArea == null ? 'on' : ''}" data-a="">전체 면적</button>
-        ${areas.map(a => `<button class="chip ${selArea === a ? 'on' : ''}" data-a="${a}">${a}㎡·${py(a)}평</button>`).join('')}</div>
-      <table><tr><th>계약일</th><th>전용</th><th class="num">층</th><th class="num">가격</th></tr>
+        ${areas.map(a => `<button class="chip ${selArea === a ? 'on' : ''}" data-a="${a}">${a}㎡ · ${py(a)}평</button>`).join('')}</div>
+      <table class="t"><tr><th>계약일</th><th>전용</th><th class="num">층</th><th class="num">가격</th></tr>
       ${rows.slice(0, 200).map(x => `<tr><td>${x.ymd}</td><td>${x.area}㎡</td><td class="num">${x.floor ?? '-'}</td>
-        <td class="num">${priceFull(x)}${x.contract ? ` <span class="muted">${esc(x.contract)}</span>` : ''}</td></tr>`).join('')}</table>
-    </div>
-    <div class="sec" id="stops" data-for="${esc(b.id)}">${stopsHtml}</div>`;
-  $('#detail .chips').onclick = e => {
+        <td class="num">${priceFull(x)}${x.contract ? ` <span class="label-hint">${esc(x.contract)}</span>` : ''}</td></tr>`).join('')}</table>
+    </calcite-block>
+    <calcite-block heading="가까운 버스 정류장" description="정류장을 누르면 노선, 노선을 누르면 경로" icon-start="bus" collapsible expanded>
+      <div id="stops" data-for="${esc(b.id)}"><span class="label-hint">불러오는 중…</span></div>
+    </calcite-block>`;
+  if (keepStops) { $('#stops').replaceWith(keepStops); bindStops(); }
+  panel.querySelector('.chips').onclick = e => {
     const c = e.target.closest('.chip'); if (!c) return;
-    selArea = c.dataset.a === '' ? null : +c.dataset.a; showDetail(b); bindStops();
+    selArea = c.dataset.a === '' ? null : +c.dataset.a; showDetail(b);
   };
-  $('#detail').classList.add('show');
+  const end = $('#end-panel');
+  if (end.collapsed) { end.collapsed = false; relayout(); }
 }
+function closeDetail() {
+  clearRoute();
+  const end = $('#end-panel');
+  if (!end.collapsed) { end.collapsed = true; relayout(); }
+  if (S.sel) { S.sel = null; render(); }
+}
+
 let shownStops = [];
 async function loadStops(b) {
   const box = () => document.querySelector(`#stops[data-for="${CSS.escape(b.id)}"]`);
@@ -792,56 +829,87 @@ async function loadStops(b) {
     const stops = await nearestStops(b);
     if (!box()) return;
     shownStops = stops;
-    box().innerHTML = `<b>가까운 버스 정류장</b> <span class="muted">(누르면 노선)</span>` + (stops.length
-      ? stops.map((s, i) => `<div class="stop" data-i="${i}"><div>${esc(s.name)} <span class="muted">${s.no ? '#' + esc(s.no) : ''}</span><span style="float:right">${km(s.dist)}</span></div><div class="routes"></div></div>`).join('')
-      : '<div class="muted">주변 정류장이 조회되지 않았습니다.</div>');
+    box().innerHTML = stops.length
+      ? stops.map((s, i) => `<div class="stop" data-i="${i}">
+          <button type="button" class="stop-head"><calcite-icon icon="chevron-right" scale="s"></calcite-icon>
+            <span class="grow">${esc(s.name)} <span class="label-hint">${s.no ? esc(s.no) : ''}</span></span><span class="num">${km(s.dist)}</span></button>
+          <div class="routes" hidden></div></div>`).join('')
+      : '<span class="label-hint">주변 정류장이 조회되지 않았습니다.</span>';
     bindStops();
   } catch (e) {
-    if (box()) box().innerHTML = `<b>가까운 버스 정류장</b><div class="warn err">${esc(e.message)}</div>`;
+    if (box()) box().innerHTML = `<span class="msg-error">${esc(e.message)}</span>`;
   }
 }
 function bindStops() {
-  document.querySelectorAll('#stops .stop').forEach(el => el.onclick = async e => {
-    const r = el.querySelector('.routes'), s = shownStops[+el.dataset.i];
-    const chip = e.target.closest('.route');
-    if (chip) {                                    // 노선 번호 → 지도에 경로 표시
-      e.stopPropagation();
+  document.querySelectorAll('#stops .stop').forEach(el => {
+    const s = shownStops[+el.dataset.i], box = el.querySelector('.routes');
+    el.querySelector('.stop-head').onclick = async () => {         // 정류장: 펼치기 / 접기
+      const open = !el.classList.contains('is-open');
+      el.classList.toggle('is-open', open);
+      box.hidden = !open;
+      el.querySelector('.route-info')?.toggleAttribute('hidden', !open);
+      if (!open || box.dataset.loaded) return;
+      box.innerHTML = '<span class="label-hint">노선 조회 중…</span>';
+      try {
+        const rs = s.routes = await stopRoutes(s);
+        box.dataset.loaded = 1;
+        box.innerHTML = rs.length ? rs.map((x, i) => `<button type="button" class="route" data-r="${i}" title="${esc(x.type)} · ${esc(x.dest)} 방면">${esc(x.name)}</button>`).join('') : '<span class="label-hint">노선 없음</span>';
+      } catch (err) { box.innerHTML = `<span class="msg-error">${esc(err.message)}</span>`; }
+    };
+    box.onclick = async e => {                                       // 노선: 경로 표시 / 다시 누르면 취소
+      const chip = e.target.closest('.route'); if (!chip) return;
       try { await showRoute(s.routes[+chip.dataset.r], chip); }
-      catch (err) { clearRoute(); chip.closest('.stop').insertAdjacentHTML('beforeend', `<div class="rtbar" id="rtbar"><span class="muted">${esc(err.message)}</span></div>`); }
-      return;
-    }
-    if (e.target.closest('.rtbar')) return;
-    if (r.dataset.loaded) { r.hidden = !r.hidden; return; }
-    r.innerHTML = '<span class="muted">노선 조회 중…</span>';
-    try {
-      const rs = s.routes = await stopRoutes(s);
-      r.dataset.loaded = 1;
-      r.innerHTML = rs.length ? rs.map((x, i) => `<span class="route" data-r="${i}" title="${esc(x.type)} → ${esc(x.dest)} (누르면 경로)">${esc(x.name)}</span>`).join('') : '<span class="muted">노선 없음</span>';
-    } catch (err) { r.innerHTML = `<span class="muted">${esc(err.message)}</span>`; }
+      catch (err) { clearRoute(); box.insertAdjacentHTML('afterend', `<div class="route-info msg-error">${esc(err.message)}</div>`); }
+    };
   });
 }
-function closeDetail() { $('#detail').classList.remove('show'); clearRoute(); }
+const ROUTE_COLORS = ['#d6336c', '#7048e8', '#0c8599', '#e67700', '#2b8a3e'];
+let routeLayer = [], shownRoute = null;
+function clearRoute() {
+  routeLayer.forEach(o => o.setMap(null)); routeLayer = []; shownRoute = null;
+  document.querySelectorAll('.route.on').forEach(x => x.classList.remove('on'));
+  document.querySelectorAll('.route-info').forEach(x => x.remove());
+}
+async function showRoute(r, chip) {
+  const key = `${r.src}${r.id}`;
+  if (shownRoute === key) { clearRoute(); return; }
+  clearRoute();
+  shownRoute = key;
+  const color = ROUTE_COLORS[[...r.id].reduce((a, c) => a + c.charCodeAt(0), 0) % ROUTE_COLORS.length];
+  chip.classList.add('on'); chip.style.setProperty('--route', color);
+  const p = await routePath(r);
+  if (shownRoute !== key) return;
+  if (p.line.length < 2) throw new ApiError('노선 경로 정보가 없습니다.');
+  const path = p.line.map(([la, ln]) => new kakao.maps.LatLng(la, ln));
+  routeLayer.push(new kakao.maps.Polyline({ map, path, strokeWeight: 5, strokeColor: color, strokeOpacity: 0.85, zIndex: 3 }));
+  for (const s of p.stops) {
+    const el = document.createElement('span');
+    el.className = 'stopdot'; el.title = s.name; el.style.setProperty('--route', color);
+    routeLayer.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(s.lat, s.lng), content: el, zIndex: 4 }));
+  }
+  chip.parentElement.insertAdjacentHTML('afterend', `<div class="route-info"><b>${esc(r.name)}</b> ${esc(r.type)} · ${esc(r.dest)} 방면 · 정류장 ${p.stops.length}개</div>`);
+}
 
 /* ───────── 시작 ───────── */
-function seg(id, onPick, multi = false) {
-  $(id).addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b) return;
-    if (multi) b.classList.toggle('on'); else $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-    onPick(b.dataset.v, b);
-  });
-}
-const setSeg = (id, on) => $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', on(b.dataset.v)));
 function showKeyState() {
-  const k = keys(), ok = k.data && k.kakao && k.vworld;
-  $('#keyState').textContent = ok ? '✓ 저장됨' : '— 필요';
+  const k = keys();
   $('#kData').value = k.data; $('#kKakao').value = k.kakao; $('#kVworld').value = k.vworld;
-  $('#keysBox').open = !ok;
+  if (!(k.data && k.kakao && k.vworld)) openPanel('settings');
 }
+function openPanel(id) {
+  const start = $('#start-panel'), act = document.querySelector(`#nav calcite-action[data-panel="${id}"]`);
+  if (act.active && !start.collapsed) { start.collapsed = true; relayout(); return; }
+  document.querySelectorAll('#nav calcite-action').forEach(a => a.active = a === act);
+  document.querySelectorAll('#start-panel calcite-panel').forEach(p => p.hidden = p.dataset.panelId !== id);
+  if (start.collapsed) { start.collapsed = false; relayout(); }
+}
+const setSeg = (id, v) => $(id).querySelectorAll('calcite-segmented-control-item').forEach(i => { const on = i.getAttribute('value') === v; i.toggleAttribute('checked', on); i.checked = on; });
+const onSeg = (id, fn) => $(id).addEventListener('calciteSegmentedControlChange', e => fn(e.target.value));
 
 async function initMap() {
   if (map) return;
   try { await loadKakao(); } catch (e) { $('#mapMsg').textContent = e.message; return; }
-  $('#mapMsg').style.display = 'none';
+  $('#mapMsg').hidden = true;
   const [lat, lng, level] = prefs.view || [37.27, 127.1, 7];
   map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(lat, lng), level });
   map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
@@ -853,28 +921,29 @@ async function initMap() {
   if (prefs.dong) selectDong(prefs.dong, { fit: false });   // 마지막으로 보던 동 다시 열기
 }
 
-(function boot() {
+(async function boot() {
+  await Promise.all(['calcite-segmented-control', 'calcite-panel', 'calcite-shell-panel', 'calcite-input-number'].map(t => customElements.whenDefined(t)));
   $('#siteUrl').textContent = location.origin.startsWith('http') ? location.origin : '(GitHub Pages 주소)';
 
   // 저장된 설정 복원
-  setSeg('#kinds', v => prefs.kinds.includes(v));
-  setSeg('#trade', v => v === prefs.trade);
-  setSeg('#unit', v => v === prefs.unit);
+  setSeg('#kind', prefs.kind); setSeg('#trade', prefs.trade); setSeg('#unit', prefs.unit);
   $('#amin').value = prefs.amin; $('#amax').value = prefs.amax;
   $('#months').value = prefs.months; $('#sort').value = prefs.sort;
 
-  seg('#trade', v => { prefs.trade = v; savePrefs(); render(); if (S.sel) showDetail(S.buildings.get(S.sel)); });
-  seg('#kinds', () => { prefs.kinds = [...$('#kinds').querySelectorAll('button.on')].map(b => b.dataset.v); savePrefs(); render(); }, true);
-  seg('#unit', v => {
+  onSeg('#kind', v => { prefs.kind = v; savePrefs(); updateHint(); render(); });
+  onSeg('#trade', v => { prefs.trade = v; savePrefs(); updateHint(); render(); const b = S.buildings.get(S.sel); if (b) showDetail(b); });
+  onSeg('#unit', v => {
     if (v === prefs.unit) return;
     for (const k of ['amin', 'amax']) { const x = parseFloat(prefs[k]); if (!isNaN(x)) prefs[k] = $('#' + k).value = (v === 'py' ? x / PY : x * PY).toFixed(1); }
     prefs.unit = v; savePrefs(); updateHint();
   });
-  for (const k of ['amin', 'amax']) $('#' + k).addEventListener('input', () => { prefs[k] = $('#' + k).value; savePrefs(); updateHint(); render(); });
-  $('#months').onchange = () => { prefs.months = $('#months').value; savePrefs(); if (S.dong) selectDong(S.dong.code, { fit: false }); };
+  for (const k of ['amin', 'amax']) $('#' + k).addEventListener('calciteInputNumberInput', e => { prefs[k] = e.target.value; savePrefs(); updateHint(); render(); });
+  $('#months').onchange = () => { prefs.months = $('#months').value; savePrefs(); updateHint(); if (S.dong) selectDong(S.dong.code, { fit: false }); };
   $('#sort').onchange = () => { prefs.sort = $('#sort').value; savePrefs(); render(); };
 
-  // 지역 선택 (지도 상단)
+  // 패널 · 지역 선택
+  document.querySelectorAll('#nav calcite-action').forEach(a => a.addEventListener('click', () => openPanel(a.dataset.panel)));
+  $('#detail').addEventListener('calcitePanelClose', closeDetail);
   fillSido();
   $('#sido').onchange = () => { const v = $('#sido').value; fillSgg(v); if (v) moveTo(SIDO_NAME[v], 10); };
   $('#sgg').onchange = async () => {
@@ -885,11 +954,12 @@ async function initMap() {
   };
   $('#dong').onchange = () => { if ($('#dong').value) selectDong($('#dong').value); };
 
-  $('#saveKeys').onclick = () => {
+  $('#saveKeys').addEventListener('click', () => {
     store.set('keys', { data: $('#kData').value.trim(), kakao: $('#kKakao').value.trim(), vworld: $('#kVworld').value.trim() });
-    S.landmarks = []; showKeyState();
-    if (!map) initMap(); else onIdle();
-  };
+    S.landmarks = []; status('키를 저장했습니다.');
+    if (!map) initMap();
+    openPanel('search');
+  });
   showKeyState(); updateHint(); render(); initMap();
 })();
 </script>
