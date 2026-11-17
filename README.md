@@ -32,6 +32,8 @@ https://developers.kakao.com 에 로그인한 뒤 **앱**에서 사용할 앱을
 - 국토교통부_오피스텔 전월세 실거래가 자료 (`RTMSDataSvcOffiRent`)
 - 경기도_정류소 조회 (`busstationservice`): 경기도 버스 정류장
 - 국토교통부_(TAGO)_버스정류소정보 (`BusSttnInfoInqireService`): 경기도 밖 지역 버스 정류장
+- 경기도_버스노선 조회 (`busrouteservice`): 노선 경로 그리기 (경기도)
+- 국토교통부_(TAGO)_버스노선정보 (`BusRouteInfoInqireService`): 노선 경로 그리기 (경기도 밖)
 
 ## 브이월드 (동 경계)
 
