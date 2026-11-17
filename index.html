@@ -71,6 +71,14 @@
   .pin.OPST { background: var(--opst); }
   .pin.sel { color: var(--app-ink); background: #ffd43b; }
   .hover-tip { display: inline-block; padding: 3px 8px; color: #000; font: 600 12px var(--app-font); background: #fff; border: 1px solid #000; border-radius: 2px; white-space: nowrap; }
+  /* 지도 오른쪽 위젯 */
+  .map-widget { position: absolute; right: 12px; z-index: 10; display: flex; flex-direction: column; background: var(--app-surface); border-radius: 4px; box-shadow: 0 1px 6px rgb(0 0 0 / 12%); overflow: hidden; }
+  .map-widget.top { top: 12px; }
+  .map-widget.bottom { bottom: 24px; }
+  .map-widget calcite-action + calcite-action { border-top: 1px solid var(--app-border); }
+  .map-widget calcite-action[active] { --calcite-action-background-color: var(--app-ink); --calcite-action-text-color: #fff; --calcite-action-text-color-press: #fff; }
+  .school-label { padding: 1px 6px; color: #5f3dc4; font: 700 11px var(--app-font); background: rgb(255 255 255 / 90%); border: 1px solid #7048e8; border-radius: 2px; white-space: nowrap; pointer-events: none; }
+  .me-dot { display: block; width: 14px; height: 14px; background: #007ac2; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 6px rgb(0 122 194 / 20%), 0 1px 3px rgb(0 0 0 / 40%); }
   /* 지도 마커: 아이콘 + 아래 레이블 */
   .mk { position: relative; display: block; cursor: pointer; }
   .mk svg { display: block; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 35%)); }
@@ -215,6 +223,14 @@
       <select id="dong" class="field"><option value="">읍면동</option></select>
     </div>
     <div id="status" class="toolbar-status"></div>
+    <div class="map-widget top">
+      <calcite-action id="schoolBtn" icon="education" text="학군" text-enabled scale="s" title="초등학교 통학구역"></calcite-action>
+    </div>
+    <div class="map-widget bottom">
+      <calcite-action id="myLocBtn" icon="gps-on" text="내 위치" scale="s"></calcite-action>
+      <calcite-action id="zoomIn" icon="plus" text="확대" scale="s"></calcite-action>
+      <calcite-action id="zoomOut" icon="minus" text="축소" scale="s"></calcite-action>
+    </div>
   </div>
 
   <calcite-shell-panel id="end-panel" slot="panel-end" display-mode="dock" collapsed>
@@ -260,7 +276,7 @@ const geoCache = store.get('geo', {});
 const saveGeo = () => store.set('geo', geoCache);
 
 /* 사용자 설정 (필터·기간·마지막 동·지도 위치) */
-const PREF_DEFAULT = { kind:'ALL', trade:'SALE', unit:'m2', amin:'', amax:'', months:'12', sort:'daycare', dong:null, view:null };
+const PREF_DEFAULT = { kind:'ALL', trade:'SALE', unit:'m2', amin:'', amax:'', months:'12', sort:'daycare', dong:null, view:null, school:false };
 const prefs = { ...PREF_DEFAULT, ...store.get('prefs', {}) };
 if (Array.isArray(prefs.kinds)) { prefs.kind = prefs.kinds.length === 1 ? prefs.kinds[0] : 'ALL'; delete prefs.kinds; }
 const savePrefs = () => store.set('prefs', prefs);
@@ -488,7 +504,7 @@ async function vworld(data, filter, geometry) {
   const feats = [];
   for (let page = 1; ; page++) {
     const d = await jsonp(`https://api.vworld.kr/req/data?service=data&request=GetFeature&data=${data}`
-      + `&key=${encodeURIComponent(key)}&domain=${encodeURIComponent(location.origin)}&attrFilter=${filter}`
+      + `&key=${encodeURIComponent(key)}&domain=${encodeURIComponent(location.origin)}&${/^(attr|geom)Filter=/.test(filter) ? filter : `attrFilter=${filter}`}`
       + `&format=json&geometry=${geometry}&attribute=true&crs=EPSG:4326&size=1000&page=${page}`);
     const r = d?.response || {};
     if (r.status === 'NOT_FOUND') break;
@@ -642,7 +658,84 @@ function ensureSgg(sgg) {               // 시군구 전체 동 경계 (한 번�
   return sggReq.get(sgg);
 }
 let idleTimer = null;
-function onIdle() { const c = map.getCenter(); prefs.view = [c.getLat(), c.getLng(), map.getLevel()]; savePrefs(); }
+function onIdle() {
+  const c = map.getCenter(); prefs.view = [c.getLat(), c.getLng(), map.getLevel()]; savePrefs();
+  if (prefs.school) loadSchoolZones();
+}
+
+/* ───────── 학군: 초등학교 통학구역 (브이월드 LT_C_DESCH, 화면 범위로 조회) ───────── */
+const SCHOOL_MAX_LEVEL = 7;          // 이보다 축소하면 표시만 유지하고 새로 받지 않음
+const SCHOOL_STYLE = { strokeColor: '#7048e8', strokeOpacity: 0.85, strokeWeight: 2, fillColor: '#7048e8', fillOpacity: 0.06 };
+const schools = new Map();           // hakgudo_id → {name, parts, shapes, label}
+const schoolTiles = new Set();       // 받아 둔 격자 (0.05° 단위)
+let schoolSeq = 0;
+function drawSchool(z) {
+  z.shapes = z.parts.filter(r => r.length > 2).map(r => new kakao.maps.Polygon({ map, path: r.map(([la, ln]) => new kakao.maps.LatLng(la, ln)), zIndex: 0, ...SCHOOL_STYLE }));
+  const big = z.parts.reduce((a, r) => r.length > a.length ? r : a, []);
+  if (big.length) {
+    const lat = big.reduce((s, p) => s + p[0], 0) / big.length, lng = big.reduce((s, p) => s + p[1], 0) / big.length;
+    z.label = new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(lat, lng), zIndex: 2, content: `<span class="school-label">${esc(z.name.replace(/통학구역$/, ''))}</span>` });
+  }
+}
+function setSchoolVisible(on) {
+  for (const z of schools.values()) { z.shapes?.forEach(s => s.setMap(on ? map : null)); z.label?.setMap(on ? map : null); }
+}
+async function loadSchoolZones() {
+  if (!map || !prefs.school) return;
+  if (map.getLevel() > SCHOOL_MAX_LEVEL) { status('지도를 더 확대하면 통학구역을 불러옵니다.'); return; }
+  const bd = map.getBounds(), sw = bd.getSouthWest(), ne = bd.getNorthEast(), T = 0.05;
+  const tiles = [];
+  for (let y = Math.floor(sw.getLat() / T); y <= Math.floor(ne.getLat() / T); y++)
+    for (let x = Math.floor(sw.getLng() / T); x <= Math.floor(ne.getLng() / T); x++)
+      if (!schoolTiles.has(`${x},${y}`)) tiles.push([x, y]);
+  if (!tiles.length) return;
+  const seq = ++schoolSeq;
+  try {
+    let n = 0;
+    await pool(tiles.map(([x, y]) => async () => {
+      const ck = `desch|${x},${y}`;
+      let zones = await idb.get(ck);
+      if (!zones) {
+        const box = `BOX(${(x * T).toFixed(2)},${(y * T).toFixed(2)},${((x + 1) * T).toFixed(2)},${((y + 1) * T).toFixed(2)})`;
+        zones = (await vworld('LT_C_DESCH', `geomFilter=${box}`, true)).map(f => {
+          const p = f.properties || {}, g = f.geometry || {};
+          const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+          return { id: String(p.hakgudo_id || p.objectid), name: p.hakgudo_nm || '', parts: polys.map(pl => simplifyRing(pl[0])) };
+        });
+        idb.set(ck, zones);
+      }
+      schoolTiles.add(`${x},${y}`);
+      for (const z of zones) if (!schools.has(z.id)) { schools.set(z.id, z); if (prefs.school) drawSchool(z); }
+      if (seq === schoolSeq) status(`통학구역 불러오는 중 ${++n}/${tiles.length}`);
+    }), 3);
+    if (seq === schoolSeq) status('');
+  } catch (e) { showError(e); }
+}
+function toggleSchool(on) {
+  prefs.school = on; savePrefs();
+  $('#schoolBtn').active = on;
+  setSchoolVisible(on);
+  if (on) loadSchoolZones(); else status('');
+}
+
+/* ───────── 내 위치 ───────── */
+let meOverlay = null;
+function locateMe({ quiet = false } = {}) {
+  return new Promise(ok => {
+    if (!navigator.geolocation) { if (!quiet) status('이 브라우저는 위치 확인을 지원하지 않습니다.', true); return ok(false); }
+    navigator.geolocation.getCurrentPosition(pos => {
+      const ll = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+      const el = document.createElement('span'); el.className = 'me-dot'; el.title = '내 위치';
+      meOverlay?.setMap(null);
+      meOverlay = new kakao.maps.CustomOverlay({ map, position: ll, content: el, zIndex: 7 });
+      map.setLevel(5); map.setCenter(ll);
+      ok(true);
+    }, err => {
+      if (!quiet) status(err.code === 1 ? '위치 권한이 거부됐습니다. 브라우저 주소창의 위치 권한을 허용하세요.' : '현재 위치를 확인하지 못했습니다.', true);
+      ok(false);
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  });
+}
 
 /* ───────── 실거래 (구 단위로만 조회 → 지난 달 자료는 브라우저에 보관) ───────── */
 async function loadSgg(sgg, prog) {
@@ -1052,9 +1145,15 @@ async function initMap() {
   if (map) return;
   try { await loadKakao(); } catch (e) { $('#mapMsg').textContent = e.message; return; }
   $('#mapMsg').hidden = true;
+  // 초기 화면: 마지막으로 보던 위치 → 없으면 내 위치 → 그것도 안 되면 기본 위치
   const [lat, lng, level] = prefs.view || [37.27, 127.1, 7];
   map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(lat, lng), level });
-  map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+  if (!prefs.view && !prefs.dong) locateMe({ quiet: true });
+  $('#myLocBtn').addEventListener('click', () => locateMe());
+  $('#zoomIn').addEventListener('click', () => map.setLevel(map.getLevel() - 1, { animate: true }));
+  $('#zoomOut').addEventListener('click', () => map.setLevel(map.getLevel() + 1, { animate: true }));
+  $('#schoolBtn').addEventListener('click', () => toggleSchool(!prefs.school));
+  if (prefs.school) toggleSchool(true);
   kakao.maps.event.addListener(map, 'idle', () => { clearTimeout(idleTimer); idleTimer = setTimeout(onIdle, 300); });
   kakao.maps.event.addListener(map, 'mousemove', e => onMouseMove(e.latLng));
   kakao.maps.event.addListener(map, 'click', e => onMapClick(e.latLng));
