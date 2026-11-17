@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>실거래 지도</title>
-<meta name="description" content="전국 아파트·오피스텔 실거래가 지도">
+<title>부동산 매물 찾기</title>
+<meta name="description" content="아파트·오피스텔 실거래가 지도">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@esri/calcite-components@3.2.1/dist/calcite/calcite.css">
 <script type="module" src="https://cdn.jsdelivr.net/npm/@esri/calcite-components@3.2.1/dist/calcite/calcite.esm.js"></script>
@@ -96,17 +96,27 @@
   .route-info { padding: 0 2px 10px 24px; color: var(--app-text-muted); font-size: 12px; }
   .route-info b { color: var(--app-text); }
   .msg-error { color: var(--app-error); font-size: 12px; }
+  .place-list { display: grid; gap: 6px; margin-bottom: 12px; }
+  .place { display: flex; align-items: center; gap: 4px; padding: 8px 4px 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; }
+  .place.is-editing { border-color: var(--app-ink); box-shadow: inset 3px 0 0 var(--app-ink); }
+  .place .grow { flex: 1; min-width: 0; }
+  .place-name { font-size: 13px; font-weight: 600; }
+  .place-addr { color: var(--app-text-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .place-form { padding-top: 12px; border-top: 1px solid var(--app-border); }
+  .card-actions { display: flex; justify-content: flex-end; margin: -4px -4px -6px 0; }
+  .fav-mark { color: #e8a200; }
 </style>
 </head>
 <body>
 <calcite-shell>
   <calcite-navigation slot="header">
-    <calcite-navigation-logo slot="logo" icon="home" heading="실거래 지도" description="아파트 · 오피스텔 실거래가 (국토교통부)"></calcite-navigation-logo>
+    <calcite-navigation-logo slot="logo" icon="home" heading="부동산 매물 찾기" description="아파트 · 오피스텔"></calcite-navigation-logo>
   </calcite-navigation>
 
   <calcite-shell-panel id="start-panel" slot="panel-start" display-mode="dock">
     <calcite-action-bar id="nav" slot="action-bar" class="calcite-mode-dark" expand-disabled>
       <calcite-action-group>
+        <calcite-action data-panel="favorites" text="즐겨찾기" icon="star"></calcite-action>
         <calcite-action data-panel="search" text="검색" icon="search" active></calcite-action>
       </calcite-action-group>
       <calcite-action-group slot="actions-end">
@@ -155,10 +165,7 @@
             </div>
             <div>
               <span class="label-text">정렬</span>
-              <select id="sort" class="field" style="width:100%">
-                <option value="daycare">어린이집 가까운 순</option><option value="office">해링턴타워 가까운 순</option>
-                <option value="price">가격 낮은 순</option><option value="recent">최근 거래 순</option>
-              </select>
+              <select id="sort" class="field" style="width:100%"></select>
             </div>
           </div>
         </div>
@@ -174,9 +181,24 @@
           <calcite-label>카카오 JavaScript 키<calcite-input id="kKakao" type="password" scale="s"></calcite-input></calcite-label>
           <calcite-label>브이월드 인증키<calcite-input id="kVworld" type="password" scale="s"></calcite-input></calcite-label>
           <calcite-button id="saveKeys" width="full" icon-start="save">저장</calcite-button>
-          <span class="label-hint">카카오 [플랫폼 키 › JavaScript 키 › JavaScript SDK 도메인]과 브이월드 서비스 URL에 <b id="siteUrl"></b>를 등록해야 합니다.</span>
         </div>
       </calcite-block>
+      <calcite-block heading="내 장소" description="거리 계산과 정렬 기준" icon-start="pin" collapsible expanded>
+        <div id="places" class="place-list"></div>
+        <div class="stack place-form">
+          <calcite-label>이름<calcite-input id="pName" scale="s" placeholder="예: 회사"></calcite-input></calcite-label>
+          <calcite-label>주소<calcite-input id="pAddr" scale="s" placeholder="도로명 또는 지번 주소"></calcite-input></calcite-label>
+          <div class="field-row">
+            <calcite-button id="pSave" icon-start="plus" width="full">추가</calcite-button>
+            <calcite-button id="pCancel" appearance="outline" kind="neutral" width="full" hidden>취소</calcite-button>
+          </div>
+          <span id="pMsg" class="label-hint"></span>
+        </div>
+      </calcite-block>
+    </calcite-panel>
+
+    <calcite-panel data-panel-id="favorites" heading="즐겨찾기" hidden>
+      <div id="favs" class="list"></div>
     </calcite-panel>
   </calcite-shell-panel>
 
@@ -204,9 +226,9 @@ const SIDO = [
   ['52','전북특별자치도'],['46','전라남도'],['47','경상북도'],['48','경상남도'],['50','제주특별자치도'],
 ];
 const SIDO_NAME = Object.fromEntries(SIDO);
-const LANDMARKS = [
-  { key:'daycare', name:'이지어린이집', address:'경기도 용인시 기흥구 예현로35번길 30' },
-  { key:'office',  name:'광교효성해링턴타워', address:'경기도 수원시 영통구 광교중앙로 170' },
+const DEFAULT_PLACES = [
+  { id:'daycare', name:'이지어린이집', address:'경기도 용인시 기흥구 예현로35번길 30' },
+  { id:'office',  name:'광교효성해링턴타워', address:'경기도 수원시 영통구 광교중앙로 170' },
 ];
 const APIS = [
   { key:'apt_trade',  kind:'APT',  rent:false, path:'RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade', nameF:'aptNm' },
@@ -238,6 +260,13 @@ const PREF_DEFAULT = { kind:'ALL', trade:'SALE', unit:'m2', amin:'', amax:'', mo
 const prefs = { ...PREF_DEFAULT, ...store.get('prefs', {}) };
 if (Array.isArray(prefs.kinds)) { prefs.kind = prefs.kinds.length === 1 ? prefs.kinds[0] : 'ALL'; delete prefs.kinds; }
 const savePrefs = () => store.set('prefs', prefs);
+
+/* 내 장소 (거리·정렬 기준) · 즐겨찾기 */
+let places = store.get('places', null) || DEFAULT_PLACES.map(p => ({ ...p }));
+const savePlaces = () => store.set('places', places);
+let favs = store.get('favs', []);
+const saveFavs = () => store.set('favs', favs);
+const isFav = id => favs.some(f => f.id === id);
 
 const idb = (() => {
   let dbp = null;
@@ -499,7 +528,7 @@ async function fetchDongs(sgg) {
 }
 
 /* ───────── 상태 ───────── */
-const S = { buildings:new Map(), loaded:new Set(), landmarks:[], view:[], sel:null,
+const S = { buildings:new Map(), loaded:new Set(), view:[], sel:null,
             sggs:new Map(),        // 시군구코드 → {code, name, full}
             dongs:new Map(),       // 법정동코드(8자리) → {sgg, code, name, full, parts}
             dong:null };
@@ -713,24 +742,65 @@ async function moveTo(query, level) {
   map.setCenter(new kakao.maps.LatLng(hit.lat, hit.lng));
 }
 
-/* ───────── 기준점 ───────── */
-async function ensureLandmarks() {
-  if (S.landmarks.length) return;
-  for (const lm of LANDMARKS) {
-    const hit = await geocode(lm.address, lm.name);
-    S.landmarks.push({ ...lm, ...(hit || { lat: null, lng: null }) });
+/* ───────── 내 장소 ───────── */
+async function ensureLandmarks() {      // 좌표가 없는 장소만 위치 확인
+  let changed = false;
+  for (const p of places) if (p.lat == null && !p.failed) {
+    const hit = await geocode(p.address, p.name);
+    if (hit) { p.lat = hit.lat; p.lng = hit.lng; } else p.failed = true;
+    changed = true;
   }
-  saveGeo();
+  if (changed) { savePlaces(); saveGeo(); renderPlaces(); }
   drawLandmarks();
 }
 function drawLandmarks() {
   if (!map) return;
   lmOverlays.forEach(o => o.setMap(null));
-  lmOverlays = S.landmarks.filter(l => l.lat != null).map(l => new kakao.maps.CustomOverlay({
+  lmOverlays = places.filter(l => l.lat != null).map(l => new kakao.maps.CustomOverlay({
     map, position: new kakao.maps.LatLng(l.lat, l.lng), yAnchor: 1, zIndex: 5, content: `<span class="lm">${esc(l.name)}</span>`,
   }));
 }
-const distances = b => S.landmarks.map(l => ({ ...l, d: (b.lat != null && l.lat != null) ? haversine(b, l) : null }));
+const distances = b => places.map(l => ({ key: l.id, name: l.name, d: (b.lat != null && l.lat != null) ? haversine(b, l) : null }));
+
+function fillSort() {
+  const opts = [...places.map(p => [p.id, `${p.name} 가까운 순`]), ['price', '가격 낮은 순'], ['recent', '최근 거래 순']];
+  $('#sort').innerHTML = opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('');
+  if (!opts.some(([v]) => v === prefs.sort)) { prefs.sort = opts[0][0]; savePrefs(); }
+  $('#sort').value = prefs.sort;
+}
+let editingPlace = null;
+function renderPlaces() {
+  $('#places').innerHTML = places.length ? places.map(p => `
+    <div class="place${editingPlace === p.id ? ' is-editing' : ''}" data-id="${esc(p.id)}">
+      <div class="grow"><div class="place-name">${esc(p.name)}</div>
+        <div class="place-addr">${esc(p.address)}${p.failed ? ' · <span class="msg-error">위치를 찾지 못함</span>' : ''}</div></div>
+      <calcite-action icon="pencil" text="편집" scale="s" data-act="edit"></calcite-action>
+      <calcite-action icon="trash" text="삭제" scale="s" data-act="del"></calcite-action>
+    </div>`).join('') : '<span class="label-hint">등록된 장소가 없습니다.</span>';
+}
+function resetPlaceForm() {
+  editingPlace = null;
+  $('#pName').value = ''; $('#pAddr').value = ''; $('#pMsg').textContent = '';
+  $('#pSave').textContent = '추가'; $('#pSave').iconStart = 'plus'; $('#pCancel').hidden = true;
+  renderPlaces();
+}
+function placesChanged() {
+  savePlaces(); renderPlaces(); fillSort(); drawLandmarks(); render();
+  const b = S.buildings.get(S.sel); if (b) showDetail(b);
+}
+async function savePlaceForm() {
+  const name = $('#pName').value.trim(), address = $('#pAddr').value.trim(), msg = $('#pMsg');
+  if (!name || !address) { msg.textContent = '이름과 주소를 모두 입력하세요.'; return; }
+  msg.textContent = '위치 확인 중…';
+  let hit = null;
+  try { hit = await geocode(address, name); } catch (e) { msg.textContent = e.message; return; }
+  if (!hit) { msg.textContent = '주소로 위치를 찾지 못했습니다. 주소를 확인하세요.'; return; }
+  saveGeo();
+  const p = editingPlace && places.find(x => x.id === editingPlace);
+  if (p) Object.assign(p, { name, address, lat: hit.lat, lng: hit.lng, failed: false });
+  else places.push({ id: 'p' + Date.now().toString(36), name, address, lat: hit.lat, lng: hit.lng });
+  resetPlaceForm(); placesChanged();
+}
 
 /* ───────── 필터 · 렌더 ───────── */
 function areaRange() {
@@ -758,18 +828,15 @@ function render() {
     S.view.push({ b, latest: ds[0], count: ds.length, dist: distances(b) });
   }
   const dk = (v, k) => v.dist.find(x => x.key === k)?.d ?? 1e12;
-  S.view.sort({
-    daycare: (a, b) => dk(a, 'daycare') - dk(b, 'daycare'),
-    office: (a, b) => dk(a, 'office') - dk(b, 'office'),
-    price: (a, b) => a.latest.price - b.latest.price || a.latest.rent - b.latest.rent,
-    recent: (a, b) => b.latest.ymd.localeCompare(a.latest.ymd),
-  }[prefs.sort] || (() => 0));
+  S.view.sort(prefs.sort === 'price' ? (a, b) => a.latest.price - b.latest.price || a.latest.rent - b.latest.rent
+    : prefs.sort === 'recent' ? (a, b) => b.latest.ymd.localeCompare(a.latest.ymd)
+    : (a, b) => dk(a, prefs.sort) - dk(b, prefs.sort));
 
   $('#list-head').textContent = S.dong ? `${sggName(S.dong.sgg)} ${S.dong.name} · ${S.view.length}개 건물 · ${TRADE_KO[prefs.trade]} 최근 실거래` : '';
   $('#list').innerHTML = S.view.length
     ? S.view.map((v, i) => `
       <div class="card${S.sel === v.b.id ? ' is-active' : ''}" data-i="${i}">
-        <div class="card-title"><span class="badge ${v.b.kind}">${KIND_KO[v.b.kind]}</span>${esc(v.b.name)}</div>
+        <div class="card-title"><span class="badge ${v.b.kind}">${KIND_KO[v.b.kind]}</span>${esc(v.b.name)}${isFav(v.b.id) ? '<calcite-icon class="fav-mark" icon="star-f" scale="s"></calcite-icon>' : ''}</div>
         <div class="card-price">${priceFull(v.latest)}</div>
         <div class="card-meta">${v.latest.area}㎡ (${py(v.latest.area)}평) · ${v.latest.floor ?? '-'}층 · ${v.latest.ymd} · 거래 ${v.count}건</div>
         <div class="card-meta">${v.dist.map(x => `${esc(x.name)} ${km(x.d)}`).join(' · ')}</div>
@@ -810,6 +877,7 @@ function showDetail(b) {
   panel.description = `${KIND_KO[b.kind]} · ${sggFull(b.sgg)} ${b.umd} ${b.jibun}${b.buildYear ? ` · ${b.buildYear}년` : ''}`;
   panel.closed = false;
   panel.innerHTML = `
+    <calcite-action id="favBtn" slot="header-actions-end" text="${isFav(b.id) ? '즐겨찾기 해제' : '즐겨찾기 추가'}" icon="${isFav(b.id) ? 'star-f' : 'star'}" ${isFav(b.id) ? 'class="fav-mark"' : ''}></calcite-action>
     <calcite-block heading="거리" description="직선거리" icon-start="measure-line" collapsible expanded>
       <table class="t">${distances(b).map(x => `<tr><td>${esc(x.name)}</td><td class="num">${km(x.d)}</td></tr>`).join('')}</table>
     </calcite-block>
@@ -828,6 +896,7 @@ function showDetail(b) {
       <div id="stops" data-for="${esc(b.id)}"><span class="label-hint">불러오는 중…</span></div>
     </calcite-block>`;
   if (keepStops) { $('#stops').replaceWith(keepStops); bindStops(); }
+  $('#favBtn').onclick = () => toggleFav(b);
   panel.querySelector('.chips').onclick = e => {
     const c = e.target.closest('.chip'); if (!c) return;
     selArea = c.dataset.a === '' ? null : +c.dataset.a; showDetail(b);
@@ -835,6 +904,37 @@ function showDetail(b) {
   const end = $('#end-panel');
   if (end.collapsed) { end.collapsed = false; relayout(); }
 }
+/* ───────── 즐겨찾기 ───────── */
+function toggleFav(b) {
+  if (isFav(b.id)) favs = favs.filter(f => f.id !== b.id);
+  else favs.unshift({ id: b.id, name: b.name, kind: b.kind, sgg: b.sgg, umd: b.umd, jibun: b.jibun, dong: S.dong?.code,
+                      address: `${sggFull(b.sgg)} ${b.umd} ${b.jibun}`.trim(), lat: b.lat, lng: b.lng });
+  saveFavs();
+  const on = isFav(b.id), btn = $('#favBtn');
+  if (btn) { btn.icon = on ? 'star-f' : 'star'; btn.text = on ? '즐겨찾기 해제' : '즐겨찾기 추가'; btn.classList.toggle('fav-mark', on); }
+  renderFavs(); render();
+}
+function renderFavs() {
+  $('#favs').innerHTML = favs.length ? favs.map((f, i) => {
+    const b = S.buildings.get(f.id), latest = b?.deals.find(d => d.trade === prefs.trade);
+    const dist = distances(f).filter(x => x.d != null).map(x => `${esc(x.name)} ${km(x.d)}`).join(' · ');
+    return `<div class="card" data-i="${i}">
+      <div class="card-title"><span class="badge ${f.kind}">${KIND_KO[f.kind]}</span>${esc(f.name)}</div>
+      ${latest ? `<div class="card-price">${TRADE_KO[prefs.trade]} ${priceFull(latest)} <span class="card-meta">${latest.ymd}</span></div>` : ''}
+      <div class="card-meta">${esc(f.address)}</div>
+      ${dist ? `<div class="card-meta">${dist}</div>` : ''}
+      <div class="card-actions"><calcite-action icon="trash" text="즐겨찾기 해제" scale="s" data-act="del"></calcite-action></div>
+    </div>`; }).join('')
+    : '<div class="empty-state"><calcite-icon icon="star" scale="l"></calcite-icon>상세 정보의 별표를 누르면<br>여기에 추가됩니다.</div>';
+}
+async function openFav(f) {
+  if (!f.dong) return status('이 즐겨찾기는 동 정보가 없어 열 수 없습니다.', true);
+  if (S.dong?.code !== f.dong) await selectDong(f.dong);
+  const b = S.buildings.get(f.id);
+  if (b && b.lat != null) select(b, true);
+  else status(`${f.name}의 실거래가 현재 기간에 없습니다.`, true);
+}
+
 function closeDetail() {
   clearRoute();
   const end = $('#end-panel');
@@ -921,6 +1021,7 @@ function openPanel(id) {
   if (act.active && !start.collapsed) { start.collapsed = true; relayout(); return; }
   document.querySelectorAll('#nav calcite-action').forEach(a => a.active = a === act);
   document.querySelectorAll('#start-panel calcite-panel').forEach(p => p.hidden = p.dataset.panelId !== id);
+  if (id === 'favorites') renderFavs();
   if (start.collapsed) { start.collapsed = false; relayout(); }
 }
 const setSeg = (id, v) => $(id).querySelectorAll('calcite-segmented-control-item').forEach(i => { const on = i.getAttribute('value') === v; i.toggleAttribute('checked', on); i.checked = on; });
@@ -943,12 +1044,11 @@ async function initMap() {
 
 (async function boot() {
   await Promise.all(['calcite-segmented-control', 'calcite-panel', 'calcite-shell-panel', 'calcite-input-number'].map(t => customElements.whenDefined(t)));
-  $('#siteUrl').textContent = location.origin.startsWith('http') ? location.origin : '(GitHub Pages 주소)';
 
   // 저장된 설정 복원
   setSeg('#kind', prefs.kind); setSeg('#trade', prefs.trade); setSeg('#unit', prefs.unit);
   $('#amin').value = prefs.amin; $('#amax').value = prefs.amax;
-  $('#months').value = prefs.months; $('#sort').value = prefs.sort;
+  $('#months').value = prefs.months; fillSort();
 
   onSeg('#kind', v => { prefs.kind = v; savePrefs(); updateHint(); render(); });
   onSeg('#trade', v => { prefs.trade = v; savePrefs(); updateHint(); render(); const b = S.buildings.get(S.sel); if (b) showDetail(b); });
@@ -976,10 +1076,43 @@ async function initMap() {
 
   $('#saveKeys').addEventListener('click', () => {
     store.set('keys', { data: $('#kData').value.trim(), kakao: $('#kKakao').value.trim(), vworld: $('#kVworld').value.trim() });
-    S.landmarks = []; status('키를 저장했습니다.');
+    places.forEach(p => { p.failed = false; }); status('키를 저장했습니다.');
     if (!map) initMap();
     openPanel('search');
   });
+  // 내 장소
+  $('#places').addEventListener('click', e => {
+    const act = e.target.closest('calcite-action'), row = e.target.closest('.place'); if (!act || !row) return;
+    const p = places.find(x => x.id === row.dataset.id); if (!p) return;
+    if (act.dataset.act === 'del') {
+      if (!confirm(`'${p.name}'을(를) 내 장소에서 삭제할까요?`)) return;
+      places = places.filter(x => x !== p);
+      if (editingPlace === p.id) resetPlaceForm();
+      placesChanged();
+    } else {
+      editingPlace = p.id;
+      $('#pName').value = p.name; $('#pAddr').value = p.address; $('#pMsg').textContent = '';
+      $('#pSave').textContent = '수정 저장'; $('#pSave').iconStart = 'save'; $('#pCancel').hidden = false;
+      renderPlaces();
+    }
+  });
+  $('#pSave').addEventListener('click', savePlaceForm);
+  $('#pCancel').addEventListener('click', resetPlaceForm);
+  $('#pAddr').addEventListener('keydown', e => { if (e.key === 'Enter') savePlaceForm(); });
+
+  // 즐겨찾기
+  $('#favs').addEventListener('click', e => {
+    const card = e.target.closest('.card'); if (!card) return;
+    const f = favs[+card.dataset.i];
+    if (e.target.closest('calcite-action[data-act="del"]')) {
+      favs = favs.filter(x => x !== f); saveFavs(); renderFavs(); render();
+      const b = S.buildings.get(S.sel); if (b?.id === f.id) showDetail(b);
+      return;
+    }
+    openFav(f);
+  });
+
+  renderPlaces(); renderFavs();
   showKeyState(); updateHint(); render(); initMap();
 })();
 </script>
