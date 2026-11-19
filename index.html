@@ -791,7 +791,7 @@ async function loadKakaoSchools() {
     }
     kakaoSchoolTiles.add(`${x},${y}`);
   }
-  if (tiles.length) status(`학교 위치는 카카오 장소 검색으로 표시했습니다 (표준데이터 응답: ${schoolDiag || '조회 안 됨'}).`);
+  if (tiles.length) status(`표준데이터에서 초등학교를 찾지 못해 카카오 장소 검색으로 표시했습니다. [표준데이터 ${schoolDiag || '조회 안 됨'}]`);
 }
 
 /* 학교 위치: 공공데이터포털 전국초중등학교위치표준데이터 (교육지원청 단위, 초등학교만) */
@@ -806,13 +806,15 @@ async function schoolQuery(params) {
     const r = await fetch(`${SCHOOL_API}?${q}`), text = (await r.text()).trim();
     if (r.status === 401 || r.status === 403) throw new ApiError('학교 위치 API 키가 거부됐습니다. 공공데이터포털에서 "전국초중등학교위치표준데이터" 활용신청을 확인하세요.');
     if (!r.ok || !text.startsWith('{')) throw new ApiError(`학교 위치 API 오류 [HTTP ${r.status}] ${text.slice(0, 120)}`);
-    const res = JSON.parse(text).response || {}, code = String(res.header?.resultCode ?? '00');
-    schoolDiag = `${code} ${res.header?.resultMsg || ''} · 전체 ${res.body?.totalCount ?? '?'}건`;
+    // 응답 구조가 {response:{header,body}} 또는 {header,body} 또는 평평한 형태일 수 있어 모두 처리
+    const j = JSON.parse(text), root = j.response || j, header = root.header || root, body = root.body || root;
+    const code = String(header.resultCode ?? header.code ?? '00'), total = body.totalCount ?? body.matchCount ?? body.currentCount;
+    const batch = asList(body.items?.item ?? body.items ?? body.data);
+    schoolDiag = `${code} ${header.resultMsg || ''} · ${total ?? batch.length}건 · 응답: ${text.replace(/\s+/g, ' ').slice(0, 160)}`;
     if (code === '03') break;                        // NODATA
-    if (code !== '00') throw new ApiError(`학교 위치 API 오류 ${code}: ${res.header?.resultMsg}`);
-    const batch = asList(res.body?.items?.item ?? res.body?.items);
+    if (code !== '00' && code !== '0') throw new ApiError(`학교 위치 API 오류 ${code}: ${header.resultMsg}`);
     items.push(...batch);
-    if (!batch.length || items.length >= +(res.body?.totalCount || 0)) break;
+    if (!batch.length || items.length >= +(total || 0)) break;
   }
   return items;
 }
