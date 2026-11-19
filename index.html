@@ -688,8 +688,9 @@ async function hoverLookup() {
   hoverBusy = false;
 }
 function clearHover() { hoverSeq++; hoverNext = null; hoverDong = null; setOutline('hover', null); hoverLabel?.setMap(null); }
+let markerTapAt = 0;
 async function onMapClick(latLng) {
-  if (overMarker) return;
+  if (overMarker || Date.now() - markerTapAt < 600) return;   // 마커를 누른 클릭은 동 선택으로 넘기지 않음
   try {
     const d = await dongAt(latLng.getLat(), latLng.getLng());
     if (d && d.code !== S.dong?.code) selectDong(d.code);
@@ -1379,9 +1380,11 @@ async function initMap() {
   kakao.maps.event.addListener(map, 'mousemove', e => onMouseMove(e.latLng));
   kakao.maps.event.addListener(map, 'click', e => onMapClick(e.latLng));
   $('#map').addEventListener('mouseleave', clearHover);
+  // 마우스로 마커 위에 있을 때만 동 hover를 끔. 터치에서는 hover 개념이 없으므로, 마커를 탭한 직후의 지도 클릭만 무시
   const MARKER_SEL = '.cluster, .pin, .mk';
-  $('#map').addEventListener('mouseover', e => { if (e.target.closest(MARKER_SEL)) { overMarker = true; clearHover(); } });
-  $('#map').addEventListener('mouseout', e => { if (e.target.closest(MARKER_SEL) && !e.relatedTarget?.closest?.(MARKER_SEL)) overMarker = false; });
+  $('#map').addEventListener('pointerover', e => { if (e.pointerType === 'mouse' && e.target.closest(MARKER_SEL)) { overMarker = true; clearHover(); } });
+  $('#map').addEventListener('pointerout', e => { if (e.pointerType === 'mouse' && e.target.closest(MARKER_SEL) && !e.relatedTarget?.closest?.(MARKER_SEL)) overMarker = false; });
+  $('#map').addEventListener('pointerdown', e => { if (e.target.closest(MARKER_SEL)) markerTapAt = Date.now(); else if (e.pointerType !== 'mouse') overMarker = false; }, true);
   ensureLandmarks().catch(() => {});
   drawFavs();
   if (prefs.dong) selectDong(prefs.dong, { fit: false });   // 마지막으로 보던 동 다시 열기
