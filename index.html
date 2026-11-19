@@ -79,6 +79,8 @@
     --calcite-action-background-color: var(--app-ink); --calcite-action-background-color-hover: #3d3d3d; --calcite-action-background-color-press: #000;
     --calcite-action-text-color: #fff; --calcite-action-text-color-press: #fff; --calcite-icon-color: #fff;
   }
+  .cluster { display: grid; place-items: center; color: #fff; font: 700 13px var(--app-font); background: rgb(31 31 31 / 85%); border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 4px rgb(0 0 0 / 35%); cursor: pointer; }
+  .cluster:hover { background: #000; }
   #map.labels-off .mk { display: none; }   /* 축소하면 마커(아이콘·이름) 숨김 */
   .me-dot { display: block; width: 14px; height: 14px; background: #007ac2; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 6px rgb(0 122 194 / 20%), 0 1px 3px rgb(0 0 0 / 40%); }
   /* 지도 마커: 아이콘 + 아래 레이블 */
@@ -1046,13 +1048,44 @@ function render() {
   $('#list').onclick = e => { const el = e.target.closest('.card'); if (el) select(S.view[+el.dataset.i].b, true); };
 
   if (!map) return;
+  drawPins();
+}
+
+/* 가격 표시: 축소하면 화면상 가까운 것끼리 묶어 개수로 표시 */
+const CLUSTER_LEVEL = 6, CLUSTER_PX = 64;
+function drawPins() {
+  if (!map) return;
   overlays.forEach(o => o.setMap(null)); overlays = [];
-  for (const v of S.view) {
+  const pin = v => {
     const el = document.createElement('span');
     el.className = `pin ${v.b.kind}${S.sel === v.b.id ? ' sel' : ''}`;
     el.title = v.b.name; el.textContent = priceLabel(v.latest);
     el.onclick = () => select(v.b, false);
     overlays.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(v.b.lat, v.b.lng), content: el, yAnchor: 1, zIndex: S.sel === v.b.id ? 10 : 3 }));
+  };
+  if (map.getLevel() < CLUSTER_LEVEL) { S.view.forEach(pin); return; }
+  const proj = map.getProjection(), cells = new Map();
+  for (const v of S.view) {
+    const p = proj.containerPointFromCoords(new kakao.maps.LatLng(v.b.lat, v.b.lng));
+    const k = `${Math.floor(p.x / CLUSTER_PX)},${Math.floor(p.y / CLUSTER_PX)}`;
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k).push(v);
+  }
+  for (const group of cells.values()) {
+    if (group.length === 1) { pin(group[0]); continue; }
+    const lat = group.reduce((s, v) => s + v.b.lat, 0) / group.length, lng = group.reduce((s, v) => s + v.b.lng, 0) / group.length;
+    const el = document.createElement('div');
+    el.className = 'cluster'; el.textContent = group.length;
+    const size = Math.min(56, 30 + Math.round(Math.log2(group.length) * 5));
+    el.style.width = el.style.height = `${size}px`;
+    el.title = `${group.length}개 건물 · 누르면 확대`;
+    el.onclick = e => {
+      e.stopPropagation();
+      const b = new kakao.maps.LatLngBounds(); group.forEach(v => b.extend(new kakao.maps.LatLng(v.b.lat, v.b.lng)));
+      map.setBounds(b, 60, 60, 60, 60);
+      if (map.getLevel() >= CLUSTER_LEVEL) map.setLevel(CLUSTER_LEVEL - 1);
+    };
+    overlays.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(lat, lng), content: el, zIndex: 4 }));
   }
 }
 
@@ -1244,7 +1277,7 @@ async function initMap() {
   $('#zoomOut').addEventListener('click', () => map.setLevel(map.getLevel() + 1, { animate: true }));
   $('#schoolBtn').addEventListener('click', () => toggleSchool(!prefs.school));
   if (prefs.school) toggleSchool(true);
-  kakao.maps.event.addListener(map, 'idle', () => { clearTimeout(idleTimer); idleTimer = setTimeout(onIdle, 300); });
+  kakao.maps.event.addListener(map, 'idle', () => { if (map.getLevel() >= CLUSTER_LEVEL || overlays.length) drawPins(); clearTimeout(idleTimer); idleTimer = setTimeout(onIdle, 300); });
   kakao.maps.event.addListener(map, 'mousemove', e => onMouseMove(e.latLng));
   kakao.maps.event.addListener(map, 'click', e => onMapClick(e.latLng));
   $('#map').addEventListener('mouseleave', clearHover);
