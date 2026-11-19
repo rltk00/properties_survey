@@ -101,9 +101,12 @@
   .chip:hover { border-color: #bdbdbd; }
   .chip.on { color: #fff; background: var(--app-ink); border-color: var(--app-ink); }
   .stop { border-bottom: 1px solid #f0f0f0; }
-  .stop-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 2px; font: 13px var(--app-font); color: var(--app-text); text-align: left; background: none; border: 0; cursor: pointer; }
+  /* 정류장 머리줄: 모바일 Safari에서 button 안의 flex가 높이를 못 늘려 아래 노선과 겹치던 문제 → div로, 긴 이름은 줄바꿈 */
+  .stop-head { display: flex; align-items: flex-start; gap: 6px; box-sizing: border-box; width: 100%; height: auto; padding: 8px 2px; font: 13px/1.4 var(--app-font); color: var(--app-text); cursor: pointer; user-select: none; }
   .stop-head:hover { background: #f5f5f5; }
-  .stop-head .grow { flex: 1; }
+  .stop-head .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .stop-head calcite-icon { flex: none; margin-top: 1px; }
+  .routes { padding-top: 2px !important; }
   .stop-head calcite-icon { color: var(--app-text-muted); transition: transform 120ms ease; }
   .stop.is-open .stop-head calcite-icon { transform: rotate(90deg); }
   .routes { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px 10px 24px; }
@@ -126,7 +129,7 @@
   }
   /* 모바일 아래쪽 시트 (상세) — 손잡이를 끌어 높이 조절 */
   .sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 30; height: var(--sheet-h, 45%); min-height: 120px; max-height: calc(100% - 48px);
-           display: flex; flex-direction: column; background: var(--app-surface); border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgb(0 0 0 / 18%); overflow: hidden; }
+           display: flex; flex-direction: column; background: var(--app-surface); border-top: 1px solid var(--app-border); box-shadow: 0 -4px 16px rgb(0 0 0 / 18%); overflow: hidden; }
   .sheet-handle { flex: none; display: grid; place-items: center; height: 22px; cursor: ns-resize; touch-action: none; }
   .sheet-handle span { width: 40px; height: 4px; background: #c4c4c4; border-radius: 2px; }
   .sheet #detail { flex: 1; min-height: 0; }
@@ -1232,7 +1235,8 @@ function naverListingUrl(b) {
   const x = Math.floor((b.lng + 180) / 360 * n);
   const y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n);
   const layer = LZString.compressToEncodedURIComponent(JSON.stringify([{ id: 'article_list', searchParams: { type: 'CLUSTER', clusterId: `${z}/${x}/${y}` } }]));
-  return `https://fin.land.naver.com/map?zoom=${z}&tradeTypes=A1-B1-B2&realEstateTypes=A01-A04-B01-A05-A06-A07-C02&layer=${layer}`;
+  // center는 '경도,위도'(일반 좌표)도 받아준다 → 건물 위치로 지도 이동
+  return `https://fin.land.naver.com/map?center=${b.lng.toFixed(6)}%2C${b.lat.toFixed(6)}&zoom=${z}&tradeTypes=A1-B1-B2&realEstateTypes=A01-A04-B01-A05-A06-A07-C02&layer=${layer}`;
 }
 function openListings(b) {
   const url = window.LZString && b.lat != null ? naverListingUrl(b)
@@ -1290,8 +1294,8 @@ async function loadStops(b) {
     shownStops = stops;
     box().innerHTML = stops.length
       ? stops.map((s, i) => `<div class="stop" data-i="${i}">
-          <button type="button" class="stop-head"><calcite-icon icon="chevron-right" scale="s"></calcite-icon>
-            <span class="grow">${esc(s.name)} <span class="label-hint">${s.no ? esc(s.no) : ''}</span></span><span class="num">${km(s.dist)}</span></button>
+          <div class="stop-head" role="button" tabindex="0"><calcite-icon icon="chevron-right" scale="s"></calcite-icon>
+            <span class="grow">${esc(s.name)} <span class="label-hint">${s.no ? esc(s.no) : ''}</span></span><span class="num">${km(s.dist)}</span></div>
           <div class="routes" hidden></div></div>`).join('')
       : '<span class="label-hint">주변 정류장이 조회되지 않았습니다.</span>';
     bindStops();
