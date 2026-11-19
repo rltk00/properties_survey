@@ -113,6 +113,8 @@
   .route-info { padding: 0 2px 10px 24px; color: var(--app-text-muted); font-size: 12px; }
   .route-info b { color: var(--app-text); }
   .msg-error { color: var(--app-error); font-size: 12px; }
+  .age-ends { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
+  .age-ends calcite-button { --calcite-button-text-color: var(--app-ink); }
   .place-list { display: grid; gap: 6px; margin-bottom: 12px; }
   .place { display: flex; align-items: center; gap: 4px; padding: 8px 4px 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; }
   .place.is-editing { border-color: var(--app-ink); box-shadow: inset 3px 0 0 var(--app-ink); }
@@ -175,15 +177,23 @@
           <div>
             <span class="label-text">건축 연차 <span id="ageHint" class="label-hint"></span></span>
             <calcite-slider id="age" min="0" max="40" min-value="0" max-value="40" step="1" ticks="10" label-ticks snap scale="s"></calcite-slider>
-            <div class="field-row" style="margin-top:4px">
-              <select id="agePreset" class="field" style="flex:0 0 auto; width:auto">
-                <option value="all">전체</option>
-                <option value="new">신축 (5년 이내)</option>
-                <option value="semi">준신축 (10년 이내)</option>
-                <option value="old">구축 (10년 초과)</option>
-                <option value="custom" hidden>직접 지정</option>
-              </select>
-              <span id="ageRangeText" class="label-hint" style="text-align:right"></span>
+            <div class="age-ends">
+              <calcite-dropdown id="ageFrom" placement="bottom-start" scale="s" width="m">
+                <calcite-button slot="trigger" appearance="transparent" icon-end="chevron-down" scale="s"></calcite-button>
+                <calcite-dropdown-group group-title="부터" selection-mode="none">
+                  <calcite-dropdown-item data-bin="new">신축 · 5년 이내</calcite-dropdown-item>
+                  <calcite-dropdown-item data-bin="semi">준신축 · 6~10년</calcite-dropdown-item>
+                  <calcite-dropdown-item data-bin="old">구축 · 10년 초과</calcite-dropdown-item>
+                </calcite-dropdown-group>
+              </calcite-dropdown>
+              <calcite-dropdown id="ageTo" placement="bottom-end" scale="s" width="m">
+                <calcite-button slot="trigger" appearance="transparent" icon-end="chevron-down" scale="s"></calcite-button>
+                <calcite-dropdown-group group-title="까지" selection-mode="none">
+                  <calcite-dropdown-item data-bin="new">신축 · 5년 이내</calcite-dropdown-item>
+                  <calcite-dropdown-item data-bin="semi">준신축 · 6~10년</calcite-dropdown-item>
+                  <calcite-dropdown-item data-bin="old">구축 · 10년 초과</calcite-dropdown-item>
+                </calcite-dropdown-group>
+              </calcite-dropdown>
             </div>
           </div>
           <div class="field-row" style="align-items:start">
@@ -1026,7 +1036,7 @@ async function savePlaceForm() {
 /* ───────── 필터 · 렌더 ───────── */
 /* 건축 연차: 0~40 (40 = 40년 이상). 건축연도를 모르는 건물은 '전체'일 때만 표시 */
 const AGE_MAX = 40;
-const AGE_PRESETS = { all: [0, AGE_MAX], new: [0, 5], semi: [0, 10], old: [11, AGE_MAX] };
+const AGE_BINS = { new: [0, 5, '신축'], semi: [6, 10, '준신축'], old: [11, AGE_MAX, '구축'] };   // From~To 구간
 const ageFull = () => +prefs.ageMin === 0 && +prefs.ageMax === AGE_MAX;
 function ageOk(b) {
   if (ageFull()) return true;
@@ -1036,12 +1046,19 @@ function ageOk(b) {
 }
 const ageText = () => ageFull() ? '전체' : `${prefs.ageMin}~${+prefs.ageMax >= AGE_MAX ? `${AGE_MAX}년 이상` : `${prefs.ageMax}년`}`;
 function syncAgeUI() {
-  const s = $('#age'); s.minValue = +prefs.ageMin; s.maxValue = +prefs.ageMax;
-  const preset = Object.entries(AGE_PRESETS).find(([, [a, b]]) => a === +prefs.ageMin && b === +prefs.ageMax)?.[0] || 'custom';
-  $('#agePreset').value = preset;
+  const s = $('#age'), lo = +prefs.ageMin, hi = +prefs.ageMax;
+  s.minValue = lo; s.maxValue = hi;
+  const fromName = Object.values(AGE_BINS).find(b => b[0] === lo)?.[2] || `${lo}년`;
+  const toName = Object.values(AGE_BINS).find(b => b[1] === hi)?.[2] || `${hi}년`;
+  $('#ageFrom [slot=trigger]').textContent = fromName;
+  $('#ageTo [slot=trigger]').textContent = toName;
   const y = new Date().getFullYear();
-  $('#ageRangeText').textContent = ageFull() ? '0 ~ 40년 이상' : `${ageText()} (${+prefs.ageMax >= AGE_MAX ? '' : y - prefs.ageMax}~${y - prefs.ageMin}년 준공)`;
-  $('#ageHint').textContent = ageFull() ? '' : ageText();
+  $('#ageHint').textContent = ageFull() ? '전체' : `${ageText()} · ${hi >= AGE_MAX ? `${y - hi}년 이전` : `${y - hi}~${y - lo}년`} 준공`;
+}
+function pickAgeEnd(end, bin) {               // From은 구간 시작, To는 구간 끝으로 맞추고 순서가 뒤집히면 반대쪽도 맞춤
+  const [a, b] = AGE_BINS[bin];
+  if (end === 'from') { prefs.ageMin = a; if (+prefs.ageMax < a) prefs.ageMax = b; }
+  else { prefs.ageMax = b; if (+prefs.ageMin > b) prefs.ageMin = a; }
 }
 function areaRange() {
   const f = prefs.unit === 'py' ? PY : 1, a = parseFloat(prefs.amin), b = parseFloat(prefs.amax);
@@ -1348,7 +1365,7 @@ async function initMap() {
 }
 
 (async function boot() {
-  await Promise.all(['calcite-segmented-control', 'calcite-panel', 'calcite-shell-panel', 'calcite-input-number', 'calcite-slider'].map(t => customElements.whenDefined(t)));
+  await Promise.all(['calcite-segmented-control', 'calcite-panel', 'calcite-shell-panel', 'calcite-input-number', 'calcite-slider', 'calcite-dropdown', 'calcite-button'].map(t => customElements.whenDefined(t)));
 
   // 저장된 설정 복원
   setSeg('#kind', prefs.kind); setSeg('#trade', prefs.trade); setSeg('#unit', prefs.unit);
@@ -1360,7 +1377,10 @@ async function initMap() {
   syncAgeUI();
   const onAge = () => { savePrefs(); syncAgeUI(); updateHint(); render(); };
   $('#age').addEventListener('calciteSliderInput', e => { prefs.ageMin = e.target.minValue; prefs.ageMax = e.target.maxValue; onAge(); });
-  $('#agePreset').onchange = () => { const p = AGE_PRESETS[$('#agePreset').value]; if (p) { [prefs.ageMin, prefs.ageMax] = p; onAge(); } };
+  for (const end of ['from', 'to']) $(end === 'from' ? '#ageFrom' : '#ageTo').addEventListener('click', e => {
+    const it = e.target.closest('calcite-dropdown-item'); if (!it) return;
+    pickAgeEnd(end, it.dataset.bin); onAge();
+  });
   onSeg('#unit', v => {
     if (v === prefs.unit) return;
     for (const k of ['amin', 'amax']) { const x = parseFloat(prefs[k]); if (!isNaN(x)) prefs[k] = $('#' + k).value = (v === 'py' ? x / PY : x * PY).toFixed(1); }
