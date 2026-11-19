@@ -1107,6 +1107,17 @@ function updateHint() {
   $('#filter-block').description = parts.join(' · ');
 }
 const PAGE_SIZE = 5, PAGE_GROUP = 5;   // 목록 5개씩, 페이지 번호는 5개씩 묶어 표시
+function pagerHtml(page, pages) {      // « 처음 · ‹ 이전 묶음 · 1 2 3 4 5 · 다음 묶음 › · 끝 »  (화살표는 6쪽 이상일 때만)
+  const g0 = Math.floor((page - 1) / PAGE_GROUP) * PAGE_GROUP + 1, g1 = Math.min(pages, g0 + PAGE_GROUP - 1);
+  const act = (icon, text, p, off) => `<calcite-action icon="${icon}" text="${text}" scale="s" data-page="${p}"${off ? ' disabled' : ''}></calcite-action>`;
+  let html = act('chevrons-left', '처음', 1, page === 1);
+  if (pages > PAGE_GROUP) html += act('chevron-left', '이전', g0 - 1, g0 === 1);
+  for (let p = g0; p <= g1; p++) html += `<button type="button" class="pg${p === page ? ' on' : ''}" data-page="${p}">${p}</button>`;
+  if (pages > PAGE_GROUP) html += act('chevron-right', '다음', g1 + 1, g1 === pages);
+  return html + act('chevrons-right', '끝', pages, page === pages);
+}
+const DEAL_FIRST = 5, DEAL_PAGE = 10;   // 실거래 내역: 처음 5건, 더보기 후 10건씩
+let dealMore = false, dealPage = 1;
 const areaOk = (d, [lo, hi]) => d.area >= lo - 0.01 && d.area <= hi + 0.01;
 
 function render() {
@@ -1145,14 +1156,7 @@ function render() {
   pager.hidden = pages <= 1;
   if (pages > 1) {
     // « 처음 · ‹ 이전 묶음 · 1 2 3 4 5 · 다음 묶음 › · 끝 »  (화살표는 6쪽 이상일 때만)
-    const g0 = Math.floor((S.page - 1) / PAGE_GROUP) * PAGE_GROUP + 1, g1 = Math.min(pages, g0 + PAGE_GROUP - 1);
-    const act = (icon, text, page, off) => `<calcite-action icon="${icon}" text="${text}" scale="s" data-page="${page}"${off ? ' disabled' : ''}></calcite-action>`;
-    let html = act('chevrons-left', '처음', 1, S.page === 1);
-    if (pages > PAGE_GROUP) html += act('chevron-left', '이전', g0 - 1, g0 === 1);
-    for (let p = g0; p <= g1; p++) html += `<button type="button" class="pg${p === S.page ? ' on' : ''}" data-page="${p}">${p}</button>`;
-    if (pages > PAGE_GROUP) html += act('chevron-right', '다음', g1 + 1, g1 === pages);
-    html += act('chevrons-right', '끝', pages, S.page === pages);
-    pager.innerHTML = html;
+    pager.innerHTML = pagerHtml(S.page, pages);
     pager.onclick = e => {
       const t = e.target.closest('[data-page]'); if (!t || t.disabled) return;
       S.page = +t.dataset.page; render(); $('#list').scrollIntoView({ block: 'nearest' });
@@ -1204,7 +1208,7 @@ function drawPins() {
 /* ───────── 상세 (오른쪽 패널) ───────── */
 function select(b, pan) {
   if (S.sel !== b.id) clearRoute();
-  S.sel = b.id; selArea = null;
+  S.sel = b.id; selArea = null; dealMore = false; dealPage = 1;
   const idx = S.view.findIndex(v => v.b.id === b.id);   // 지도에서 고른 건물이 다른 쪽에 있으면 그 쪽으로
   if (idx >= 0) S.page = Math.floor(idx / PAGE_SIZE) + 1;
   render();
@@ -1218,6 +1222,9 @@ function showDetail(b) {
   const tradeDeals = all.filter(d => d.trade === prefs.trade);
   const areas = [...new Set(tradeDeals.map(d => d.area))].sort((x, y) => x - y);
   const rows = tradeDeals.filter(d => selArea == null || d.area === selArea);
+  const dealPages = Math.max(1, Math.ceil(rows.length / DEAL_PAGE));
+  dealPage = Math.min(Math.max(1, dealPage), dealPages);
+  const dealRows = dealMore ? rows.slice((dealPage - 1) * DEAL_PAGE, dealPage * DEAL_PAGE) : rows.slice(0, DEAL_FIRST);
   const latestOf = t => all.find(d => d.trade === t && (selArea == null || d.area === selArea));
   const keepStops = $('#stops')?.dataset.for === b.id ? $('#stops') : null;
   const panel = $('#detail');
@@ -1239,8 +1246,10 @@ function showDetail(b) {
       <div class="chips"><button class="chip ${selArea == null ? 'on' : ''}" data-a="">전체 면적</button>
         ${areas.map(a => `<button class="chip ${selArea === a ? 'on' : ''}" data-a="${a}">${a}㎡ · ${py(a)}평</button>`).join('')}</div>
       <table class="t"><tr><th>계약일</th><th>전용</th><th class="num">층</th><th class="num">가격</th></tr>
-      ${rows.slice(0, 200).map(x => `<tr><td>${x.ymd}</td><td>${x.area}㎡</td><td class="num">${x.floor ?? '-'}</td>
+      ${dealRows.map(x => `<tr><td>${x.ymd}</td><td>${x.area}㎡</td><td class="num">${x.floor ?? '-'}</td>
         <td class="num">${priceFull(x)}${x.contract ? ` <span class="label-hint">${esc(x.contract)}</span>` : ''}</td></tr>`).join('')}</table>
+      ${!dealMore && rows.length > DEAL_FIRST ? `<calcite-button id="dealMore" appearance="outline" kind="neutral" width="full" scale="s" icon-end="chevron-down" style="margin-top:8px">목록 더보기 (${rows.length}건)</calcite-button>` : ''}
+      ${dealMore && dealPages > 1 ? `<div class="pager" id="dealPager">${pagerHtml(dealPage, dealPages)}</div>` : ''}
     </calcite-block>
     <calcite-block heading="가까운 버스 정류장" description="정류장을 누르면 노선, 노선을 누르면 경로" icon-start="bus" collapsible expanded>
       <div id="stops" data-for="${esc(b.id)}"><span class="label-hint">불러오는 중…</span></div>
@@ -1250,8 +1259,13 @@ function showDetail(b) {
   $('#listingBtn').onclick = () => openListings(b);
   panel.querySelector('.chips').onclick = e => {
     const c = e.target.closest('.chip'); if (!c) return;
-    selArea = c.dataset.a === '' ? null : +c.dataset.a; showDetail(b);
+    selArea = c.dataset.a === '' ? null : +c.dataset.a; dealMore = false; dealPage = 1; showDetail(b);
   };
+  $('#dealMore')?.addEventListener('click', () => { dealMore = true; dealPage = 1; showDetail(b); });
+  $('#dealPager')?.addEventListener('click', e => {
+    const t = e.target.closest('[data-page]'); if (!t || t.disabled) return;
+    dealPage = +t.dataset.page; showDetail(b);
+  });
   if (isMobile()) {                     // 모바일: 지도 아래쪽 시트로 열고, 왼쪽 패널은 닫기
     $('#start-panel').collapsed = true;
     if ($('#sheet').hidden) { $('#sheet').hidden = false; $('.mapwrap').classList.add('sheet-open'); relayout(); }
