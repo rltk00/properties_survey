@@ -1114,6 +1114,7 @@ function showDetail(b) {
   panel.description = `${KIND_KO[b.kind]} · ${sggFull(b.sgg)} ${b.umd} ${b.jibun}${b.buildYear ? ` · ${b.buildYear}년` : ''}`;
   panel.closed = false;
   panel.innerHTML = `
+    <calcite-button id="listingBtn" slot="footer" width="full" icon-start="home" icon-end="launch">매물 보기 (네이버 부동산)</calcite-button>
     <calcite-action id="favBtn" slot="header-actions-end" text="${isFav(b.id) ? '즐겨찾기 해제' : '즐겨찾기 추가'}" icon="${isFav(b.id) ? 'star-f' : 'star'}" ${isFav(b.id) ? 'class="fav-mark"' : ''}></calcite-action>
     <calcite-block heading="거리" description="직선거리" icon-start="measure-line" collapsible expanded>
       <table class="t">${distances(b).map(x => `<tr><td>${esc(x.name)}</td><td class="num">${km(x.d)}</td></tr>`).join('')}</table>
@@ -1134,6 +1135,7 @@ function showDetail(b) {
     </calcite-block>`;
   if (keepStops) { $('#stops').replaceWith(keepStops); bindStops(); }
   $('#favBtn').onclick = () => toggleFav(b);
+  $('#listingBtn').onclick = () => openListings(b);
   panel.querySelector('.chips').onclick = e => {
     const c = e.target.closest('.chip'); if (!c) return;
     selArea = c.dataset.a === '' ? null : +c.dataset.a; showDetail(b);
@@ -1141,6 +1143,14 @@ function showDetail(b) {
   const end = $('#end-panel');
   if (end.collapsed) { end.collapsed = false; relayout(); }
 }
+/* ───────── 매물 보기: 네이버 부동산 검색을 팝업 창으로 (같은 창 재사용) ───────── */
+function openListings(b) {
+  const url = `https://fin.land.naver.com/search?query=${encodeURIComponent(`${b.umd} ${b.name}`)}`;
+  const w = Math.min(1280, screen.availWidth - 80), h = Math.min(900, screen.availHeight - 80);
+  const win = window.open(url, 'naverLand', `width=${w},height=${h},left=${(screen.availWidth - w) / 2},top=${(screen.availHeight - h) / 2}`);
+  if (win) win.focus(); else window.open(url, '_blank');   // 팝업이 막히면 새 탭
+}
+
 /* ───────── 즐겨찾기 ───────── */
 function toggleFav(b) {
   if (isFav(b.id)) favs = favs.filter(f => f.id !== b.id);
