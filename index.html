@@ -1190,7 +1190,8 @@ function showDetail(b) {
   const keepStops = $('#stops')?.dataset.for === b.id ? $('#stops') : null;
   const panel = $('#detail');
   panel.heading = b.name;
-  panel.description = `${KIND_KO[b.kind]} · ${sggFull(b.sgg)} ${b.umd} ${b.jibun}${b.buildYear ? ` · ${b.buildYear}년` : ''}`;
+  const age = b.buildYear ? new Date().getFullYear() - b.buildYear : null;   // 건축 연차 필터와 같은 기준
+  panel.description = `${KIND_KO[b.kind]} · ${sggFull(b.sgg)} ${b.umd} ${b.jibun}${b.buildYear ? ` · ${b.buildYear}년 (${age}년차)` : ''}`;
   panel.closed = false;
   panel.innerHTML = `
     <calcite-button id="listingBtn" slot="footer" width="full" icon-start="home" icon-end="launch">매물 보기 (네이버 부동산)</calcite-button>
