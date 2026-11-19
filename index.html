@@ -70,6 +70,7 @@
   /* 지도 위 표시 */
   .pin { display: inline-block; padding: 3px 8px; color: #fff; font: 600 12px var(--app-font); white-space: nowrap; background: var(--app-ink); border: 2px solid #fff; border-radius: 4px; box-shadow: 0 1px 4px rgb(0 0 0 / 30%); cursor: pointer; }
   .pin.OPST { background: var(--opst); }
+  .pin.other { color: #fff; background: #9a9a9a; border-style: dashed; }   /* 조건에 맞는 실거래 없음: 가장 최근 실거래(거래종류 첫 글자) */
   .pin.sel { color: var(--app-ink); background: #ffd43b; }
   .hover-tip { display: inline-block; padding: 3px 8px; color: #000; font: 600 12px var(--app-font); background: #fff; border: 1px solid #000; border-radius: 2px; white-space: nowrap; }
   /* 지도 오른쪽 위젯 */
@@ -392,13 +393,28 @@ async function pool(tasks, n, onDone) {
 }
 class ApiError extends Error {}
 
+/* 공공데이터포털 호출: 초당 요청 제한(429)을 넘지 않도록 간격을 두고, 429가 오면 잠시 쉬었다 다시 시도 */
+const DATA_GAP_MS = 150;              // 요청 사이 최소 간격 (초당 약 6건)
+let dataNext = 0;
+async function dataFetch(url) {
+  for (let attempt = 0; ; attempt++) {
+    const now = Date.now(), wait = Math.max(0, dataNext - now);
+    dataNext = Math.max(now, dataNext) + DATA_GAP_MS;
+    if (wait) await new Promise(r => setTimeout(r, wait));
+    const r = await fetch(url);
+    if (r.status !== 429 || attempt >= 4) return r;
+    const backoff = 800 * 2 ** attempt;   // 0.8s, 1.6s, 3.2s, 6.4s
+    dataNext = Math.max(dataNext, Date.now() + backoff);
+  }
+}
+
 /* ───────── 국토부 실거래가 ───────── */
 async function molitFetch(api, sgg, ym) {
   const key = keys().data;
   if (!key) throw new ApiError('설정에서 공공데이터포털 키를 저장하세요.');
   const items = [];
   for (let page = 1; ; page++) {
-    const r = await fetch(`https://apis.data.go.kr/1613000/${api.path}?serviceKey=${encodeURIComponent(key)}&LAWD_CD=${sgg}&DEAL_YMD=${ym}&pageNo=${page}&numOfRows=1000`);
+    const r = await dataFetch(`https://apis.data.go.kr/1613000/${api.path}?serviceKey=${encodeURIComponent(key)}&LAWD_CD=${sgg}&DEAL_YMD=${ym}&pageNo=${page}&numOfRows=1000`);
     const text = await r.text(), raw = `[HTTP ${r.status}] ${text.replace(/\s+/g, ' ').slice(0, 200)}`;
     if (r.status === 403 || r.status === 401) throw new ApiError(`공공데이터포털 키가 거부됐습니다 (${api.key}). 서버 응답: ${raw}`);
     if (!r.ok) throw new ApiError(`국토부 API 오류 ${raw}`);
@@ -472,7 +488,7 @@ const coordRegion = (lat, lng) => new Promise(ok => new kakao.maps.services.Geoc
 const busCache = {};
 async function dataGet(url, params) {
   const q = new URLSearchParams({ serviceKey: keys().data, ...params });
-  const r = await fetch(`${url}?${q}`);
+  const r = await dataFetch(`${url}?${q}`);
   if (r.status === 403 || r.status === 401) throw new ApiError(`버스 API 키가 거부됐습니다 (${url.split('/').slice(-2).join('/')}). 공공데이터포털 활용신청을 확인하세요.`);
   if (!r.ok) throw new ApiError(`버스 API 오류 HTTP ${r.status}`);
   return (await r.text()).trim();
@@ -822,7 +838,7 @@ async function schoolQuery(params) {
   const items = [];
   for (let page = 1; page <= 5; page++) {
     const q = new URLSearchParams({ serviceKey: keys().data, pageNo: page, numOfRows: 1000, type: 'json', schoolSe: '초등학교', ...params });
-    const r = await fetch(`${SCHOOL_API}?${q}`), text = (await r.text()).trim();
+    const r = await dataFetch(`${SCHOOL_API}?${q}`), text = (await r.text()).trim();
     if (r.status === 401 || r.status === 403) throw new ApiError('학교 위치 API 키가 거부됐습니다. 공공데이터포털에서 "전국초중등학교위치표준데이터" 활용신청을 확인하세요.');
     if (!r.ok || !text.startsWith('{')) throw new ApiError(`학교 위치 API 오류 [HTTP ${r.status}] ${text.slice(0, 120)}`);
     // 응답 구조가 {response:{header,body}} 또는 {header,body} 또는 평평한 형태일 수 있어 모두 처리
@@ -906,7 +922,7 @@ async function loadSgg(sgg, prog) {
       S.loaded.add(k);
     });
   }
-  await pool(tasks, 4, (d, t) => prog(`${sggName(sgg)} 실거래 조회 ${d}/${t}`));
+  await pool(tasks, 3, (d, t) => prog(`${sggName(sgg)} 실거래 조회 ${d}/${t}`));
   for (const b of S.buildings.values()) if (b.sgg === sgg) b.deals.sort((x, y) => y.ymd.localeCompare(x.ymd));
 }
 const inDong = (b, d) => b.sgg === d.sgg && (b.emd ? b.emd === d.code.slice(5, 8) : (b.umd === d.name || b.umd.startsWith(d.name + ' ')));
@@ -1122,11 +1138,11 @@ const areaOk = (d, [lo, hi]) => d.area >= lo - 0.01 && d.area <= hi + 0.01;
 
 function render() {
   const rng = areaRange();
-  S.view = [];
+  S.view = []; S.others = [];   // others: 거래·면적 조건에 맞는 실거래가 없는 건물 → 가장 최근 실거래로 회색 표시
   if (S.dong) for (const b of S.buildings.values()) {
     if (b.lat == null || (prefs.kind !== 'ALL' && b.kind !== prefs.kind) || !inDong(b, S.dong) || !ageOk(b)) continue;
     const ds = b.deals.filter(d => d.trade === prefs.trade && areaOk(d, rng));
-    if (!ds.length) continue;
+    if (!ds.length) { if (b.deals.length) S.others.push({ b, latest: b.deals[0], other: true }); continue; }
     S.view.push({ b, latest: ds[0], count: ds.length, dist: distances(b) });
   }
   const dk = (v, k) => v.dist.find(x => x.key === k)?.d ?? 1e12;
@@ -1141,7 +1157,8 @@ function render() {
   S.page = Math.min(Math.max(1, S.page || 1), pages);
   const from = (S.page - 1) * PAGE_SIZE;
 
-  $('#list-head').textContent = S.dong ? `${sggName(S.dong.sgg)} ${S.dong.name} · ${S.view.length}개 건물 · ${TRADE_KO[prefs.trade]} 최근 실거래` : '';
+  $('#list-head').textContent = S.dong ? `${sggName(S.dong.sgg)} ${S.dong.name} · ${S.view.length}개 건물 · ${TRADE_KO[prefs.trade]} 최근 실거래`
+    + (S.others.length ? ` · 조건 밖 ${S.others.length}개는 지도에 회색` : '') : '';
   $('#list').innerHTML = S.view.length
     ? S.view.slice(from, from + PAGE_SIZE).map((v, j) => { const i = from + j; return `
       <div class="card${S.sel === v.b.id ? ' is-active' : ''}" data-i="${i}">
@@ -1174,14 +1191,16 @@ function drawPins() {
   overlays.forEach(o => o.setMap(null)); overlays = [];
   const pin = v => {
     const el = document.createElement('span');
-    el.className = `pin ${v.b.kind}${S.sel === v.b.id ? ' sel' : ''}`;
-    el.title = v.b.name; el.textContent = priceLabel(v.latest);
+    el.className = `pin ${v.other ? 'other' : v.b.kind}${S.sel === v.b.id ? ' sel' : ''}`;
+    el.title = v.other ? `${v.b.name} · 조건에 맞는 실거래 없음 (최근 ${TRADE_KO[v.latest.trade]} ${v.latest.ymd})` : v.b.name;
+    el.textContent = v.other ? `${TRADE_KO[v.latest.trade][0]} ${priceLabel(v.latest)}` : priceLabel(v.latest);
     el.onclick = () => select(v.b, false);
     overlays.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(v.b.lat, v.b.lng), content: el, yAnchor: 1, zIndex: S.sel === v.b.id ? 10 : 3 }));
   };
-  if (map.getLevel() < CLUSTER_LEVEL) { S.view.forEach(pin); return; }
+  const all = [...S.view, ...(S.others || [])];
+  if (map.getLevel() < CLUSTER_LEVEL) { all.forEach(pin); return; }
   const proj = map.getProjection(), cells = new Map();
-  for (const v of S.view) {
+  for (const v of all) {
     const p = proj.containerPointFromCoords(new kakao.maps.LatLng(v.b.lat, v.b.lng));
     const k = `${Math.floor(p.x / CLUSTER_PX)},${Math.floor(p.y / CLUSTER_PX)}`;
     if (!cells.has(k)) cells.set(k, []);
