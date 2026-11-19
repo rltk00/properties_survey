@@ -1235,8 +1235,11 @@ function naverListingUrl(b) {
   const x = Math.floor((b.lng + 180) / 360 * n);
   const y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n);
   const layer = LZString.compressToEncodedURIComponent(JSON.stringify([{ id: 'article_list', searchParams: { type: 'CLUSTER', clusterId: `${z}/${x}/${y}` } }]));
-  // center는 '경도,위도'(일반 좌표)도 받아준다 → 건물 위치로 지도 이동
-  return `https://fin.land.naver.com/map?center=${b.lng.toFixed(6)}%2C${b.lat.toFixed(6)}&zoom=${z}&tradeTypes=A1-B1-B2&realEstateTypes=A01-A04-B01-A05-A06-A07-C02&layer=${layer}`;
+  // center = base62(경도×10⁷ + 2×10⁹) + '-' + base62(위도×10⁷ + 2×10⁹)  (알파벳 0-9a-zA-Z)
+  // 예: 서울시청 126.9786445, 37.5666612 → 3zhGP3-2AM3pq
+  const B62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const enc = v => { let n = Math.round(v * 1e7) + 2e9, s = ''; while (n > 0) { s = B62[n % 62] + s; n = Math.floor(n / 62); } return s; };
+  return `https://fin.land.naver.com/map?center=${enc(b.lng)}-${enc(b.lat)}&zoom=${z}&tradeTypes=A1-B1-B2&realEstateTypes=A01-A04-B01-A05-A06-A07-C02&layer=${layer}`;
 }
 function openListings(b) {
   const url = window.LZString && b.lat != null ? naverListingUrl(b)
