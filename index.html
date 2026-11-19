@@ -85,7 +85,10 @@
   .list-bar { position: sticky; top: 0; z-index: 3; display: grid; gap: 6px; padding: 10px 12px 8px; background: var(--app-surface); border-bottom: 1px solid var(--app-border); }
   .list-bar .list-head { padding: 0; }
   .list-bar:has(#list-head:empty) { gap: 0; }
-  .pager { display: flex; justify-content: center; padding: 4px 12px 16px; }
+  .pager { display: flex; justify-content: center; align-items: center; gap: 2px; padding: 4px 12px 16px; }
+  .pager .pg { min-width: 30px; height: 30px; padding: 0 6px; font: 13px var(--app-font); color: var(--app-text-muted); background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+  .pager .pg:hover { color: var(--app-text); background: #f3f3f3; }
+  .pager .pg.on { color: var(--app-ink); font-weight: 700; border-bottom-color: var(--app-ink); }
   #map.labels-off .mk { display: none; }   /* 축소하면 마커(아이콘·이름) 숨김 */
   .me-dot { display: block; width: 14px; height: 14px; background: #007ac2; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 6px rgb(0 122 194 / 20%), 0 1px 3px rgb(0 0 0 / 40%); }
   /* 지도 마커: 아이콘 + 아래 레이블 */
@@ -1103,7 +1106,7 @@ function updateHint() {
   parts.push($('#months').selectedOptions[0]?.textContent || '');
   $('#filter-block').description = parts.join(' · ');
 }
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5, PAGE_GROUP = 5;   // 목록 5개씩, 페이지 번호는 5개씩 묶어 표시
 const areaOk = (d, [lo, hi]) => d.area >= lo - 0.01 && d.area <= hi + 0.01;
 
 function render() {
@@ -1141,11 +1144,19 @@ function render() {
   const pager = $('#pager');
   pager.hidden = pages <= 1;
   if (pages > 1) {
-    pager.innerHTML = `<calcite-pagination page-size="${PAGE_SIZE}" total-items="${S.view.length}" start-item="${from + 1}" scale="s"></calcite-pagination>`;
-    pager.firstElementChild.addEventListener('calcitePaginationChange', e => {
-      S.page = Math.floor((e.target.startItem - 1) / PAGE_SIZE) + 1;
-      render(); $('#list').scrollIntoView({ block: 'nearest' });
-    });
+    // « 처음 · ‹ 이전 묶음 · 1 2 3 4 5 · 다음 묶음 › · 끝 »  (화살표는 6쪽 이상일 때만)
+    const g0 = Math.floor((S.page - 1) / PAGE_GROUP) * PAGE_GROUP + 1, g1 = Math.min(pages, g0 + PAGE_GROUP - 1);
+    const act = (icon, text, page, off) => `<calcite-action icon="${icon}" text="${text}" scale="s" data-page="${page}"${off ? ' disabled' : ''}></calcite-action>`;
+    let html = act('chevrons-left', '처음', 1, S.page === 1);
+    if (pages > PAGE_GROUP) html += act('chevron-left', '이전', g0 - 1, g0 === 1);
+    for (let p = g0; p <= g1; p++) html += `<button type="button" class="pg${p === S.page ? ' on' : ''}" data-page="${p}">${p}</button>`;
+    if (pages > PAGE_GROUP) html += act('chevron-right', '다음', g1 + 1, g1 === pages);
+    html += act('chevrons-right', '끝', pages, S.page === pages);
+    pager.innerHTML = html;
+    pager.onclick = e => {
+      const t = e.target.closest('[data-page]'); if (!t || t.disabled) return;
+      S.page = +t.dataset.page; render(); $('#list').scrollIntoView({ block: 'nearest' });
+    };
   }
 
   if (!map) return;
