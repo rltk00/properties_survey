@@ -74,7 +74,7 @@
   .hover-tip { display: inline-block; padding: 3px 8px; color: #000; font: 600 12px var(--app-font); background: #fff; border: 1px solid #000; border-radius: 2px; white-space: nowrap; }
   /* 지도 오른쪽 위젯 */
   .map-widget { position: absolute; right: 12px; z-index: 10; }
-  .map-widget.top { top: 12px; }
+  .map-widget.top { top: 64px; }   /* 지역 선택 바(위 12px + 높이 44px) 아래부터, 위젯이 늘면 아래로 쌓임 */
   .map-widget.bottom { bottom: 24px; }
   .map-widget calcite-action[active] {
     --calcite-action-background-color: var(--app-ink); --calcite-action-background-color-hover: #3d3d3d; --calcite-action-background-color-press: #000;
@@ -116,11 +116,11 @@
   /* 모바일: 지도를 꽉 채우고 패널은 지도 위에 겹쳐 열기 */
   @media (max-width: 768px) {
     #start-panel, #end-panel { --calcite-shell-panel-width: calc(100vw - 48px); --calcite-shell-panel-max-width: calc(100vw - 48px); }
-    .toolbar { left: 8px; right: 56px; width: auto; transform: none; top: 8px; padding: 4px; gap: 4px; }
+    .toolbar { left: 8px; right: 8px; width: auto; transform: none; top: 8px; padding: 4px; gap: 4px; }
     .toolbar select.field { height: 30px; padding: 0 22px 0 6px; font-size: 12px; background-position: right 5px center; }
-    .toolbar-status { top: 50px; left: 8px; right: 8px; max-width: none; transform: none; white-space: normal; }
+    .toolbar-status { top: 54px; left: 8px; right: 56px; max-width: none; transform: none; white-space: normal; }
     .map-widget { right: 8px; }
-    .map-widget.top { top: 8px; }
+    .map-widget.top { top: 54px; }
     .map-widget.bottom { bottom: 28px; }
     calcite-navigation-logo { --calcite-navigation-logo-heading-text-size: 1rem; }
   }
