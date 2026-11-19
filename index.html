@@ -172,6 +172,20 @@
               </calcite-segmented-control>
             </div>
           </calcite-label>
+          <div>
+            <span class="label-text">건축 연차 <span id="ageHint" class="label-hint"></span></span>
+            <calcite-slider id="age" min="0" max="40" min-value="0" max-value="40" step="1" ticks="10" label-ticks snap scale="s"></calcite-slider>
+            <div class="field-row" style="margin-top:4px">
+              <select id="agePreset" class="field" style="flex:0 0 auto; width:auto">
+                <option value="all">전체</option>
+                <option value="new">신축 (5년 이내)</option>
+                <option value="semi">준신축 (10년 이내)</option>
+                <option value="old">구축 (10년 초과)</option>
+                <option value="custom" hidden>직접 지정</option>
+              </select>
+              <span id="ageRangeText" class="label-hint" style="text-align:right"></span>
+            </div>
+          </div>
           <div class="field-row" style="align-items:start">
             <div>
               <span class="label-text">기간</span>
@@ -285,7 +299,7 @@ const geoCache = store.get('geo', {});
 const saveGeo = () => store.set('geo', geoCache);
 
 /* 사용자 설정 (필터·기간·마지막 동·지도 위치) */
-const PREF_DEFAULT = { kind:'ALL', trade:'SALE', unit:'m2', amin:'', amax:'', months:'12', sort:'daycare', dong:null, view:null, school:false };
+const PREF_DEFAULT = { kind:'ALL', trade:'SALE', unit:'m2', amin:'', amax:'', months:'12', sort:'daycare', dong:null, view:null, school:false, ageMin:0, ageMax:40 };
 const prefs = { ...PREF_DEFAULT, ...store.get('prefs', {}) };
 if (Array.isArray(prefs.kinds)) { prefs.kind = prefs.kinds.length === 1 ? prefs.kinds[0] : 'ALL'; delete prefs.kinds; }
 const savePrefs = () => store.set('prefs', prefs);
@@ -1010,6 +1024,25 @@ async function savePlaceForm() {
 }
 
 /* ───────── 필터 · 렌더 ───────── */
+/* 건축 연차: 0~40 (40 = 40년 이상). 건축연도를 모르는 건물은 '전체'일 때만 표시 */
+const AGE_MAX = 40;
+const AGE_PRESETS = { all: [0, AGE_MAX], new: [0, 5], semi: [0, 10], old: [11, AGE_MAX] };
+const ageFull = () => +prefs.ageMin === 0 && +prefs.ageMax === AGE_MAX;
+function ageOk(b) {
+  if (ageFull()) return true;
+  if (!b.buildYear) return false;
+  const age = new Date().getFullYear() - b.buildYear;
+  return age >= +prefs.ageMin && (+prefs.ageMax >= AGE_MAX || age <= +prefs.ageMax);
+}
+const ageText = () => ageFull() ? '전체' : `${prefs.ageMin}~${+prefs.ageMax >= AGE_MAX ? `${AGE_MAX}년 이상` : `${prefs.ageMax}년`}`;
+function syncAgeUI() {
+  const s = $('#age'); s.minValue = +prefs.ageMin; s.maxValue = +prefs.ageMax;
+  const preset = Object.entries(AGE_PRESETS).find(([, [a, b]]) => a === +prefs.ageMin && b === +prefs.ageMax)?.[0] || 'custom';
+  $('#agePreset').value = preset;
+  const y = new Date().getFullYear();
+  $('#ageRangeText').textContent = ageFull() ? '0 ~ 40년 이상' : `${ageText()} (${+prefs.ageMax >= AGE_MAX ? '' : y - prefs.ageMax}~${y - prefs.ageMin}년 준공)`;
+  $('#ageHint').textContent = ageFull() ? '' : ageText();
+}
 function areaRange() {
   const f = prefs.unit === 'py' ? PY : 1, a = parseFloat(prefs.amin), b = parseFloat(prefs.amax);
   return [isNaN(a) ? 0 : a * f, isNaN(b) ? Infinity : b * f];
@@ -1020,6 +1053,7 @@ function updateHint() {
     ? (prefs.unit === 'py' ? `${lo.toFixed(1)} ~ ${hi < Infinity ? hi.toFixed(1) : ''}㎡` : `${py(lo)} ~ ${hi < Infinity ? py(hi) : ''}평`) : '';
   const parts = [prefs.kind === 'ALL' ? '아파트·오피스텔' : KIND_KO[prefs.kind], TRADE_KO[prefs.trade]];
   if (lo || hi < Infinity) parts.push(`${prefs.amin || 0}~${prefs.amax || ''}${prefs.unit === 'py' ? '평' : '㎡'}`);
+  if (!ageFull()) parts.push(`연차 ${ageText()}`);
   parts.push($('#months').selectedOptions[0]?.textContent || '');
   $('#filter-block').description = parts.join(' · ');
 }
@@ -1029,7 +1063,7 @@ function render() {
   const rng = areaRange();
   S.view = [];
   if (S.dong) for (const b of S.buildings.values()) {
-    if (b.lat == null || (prefs.kind !== 'ALL' && b.kind !== prefs.kind) || !inDong(b, S.dong)) continue;
+    if (b.lat == null || (prefs.kind !== 'ALL' && b.kind !== prefs.kind) || !inDong(b, S.dong) || !ageOk(b)) continue;
     const ds = b.deals.filter(d => d.trade === prefs.trade && areaOk(d, rng));
     if (!ds.length) continue;
     S.view.push({ b, latest: ds[0], count: ds.length, dist: distances(b) });
@@ -1314,7 +1348,7 @@ async function initMap() {
 }
 
 (async function boot() {
-  await Promise.all(['calcite-segmented-control', 'calcite-panel', 'calcite-shell-panel', 'calcite-input-number'].map(t => customElements.whenDefined(t)));
+  await Promise.all(['calcite-segmented-control', 'calcite-panel', 'calcite-shell-panel', 'calcite-input-number', 'calcite-slider'].map(t => customElements.whenDefined(t)));
 
   // 저장된 설정 복원
   setSeg('#kind', prefs.kind); setSeg('#trade', prefs.trade); setSeg('#unit', prefs.unit);
@@ -1323,6 +1357,10 @@ async function initMap() {
 
   onSeg('#kind', v => { prefs.kind = v; savePrefs(); updateHint(); render(); });
   onSeg('#trade', v => { prefs.trade = v; savePrefs(); updateHint(); render(); const b = S.buildings.get(S.sel); if (b) showDetail(b); });
+  syncAgeUI();
+  const onAge = () => { savePrefs(); syncAgeUI(); updateHint(); render(); };
+  $('#age').addEventListener('calciteSliderInput', e => { prefs.ageMin = e.target.minValue; prefs.ageMax = e.target.maxValue; onAge(); });
+  $('#agePreset').onchange = () => { const p = AGE_PRESETS[$('#agePreset').value]; if (p) { [prefs.ageMin, prefs.ageMax] = p; onAge(); } };
   onSeg('#unit', v => {
     if (v === prefs.unit) return;
     for (const k of ['amin', 'amax']) { const x = parseFloat(prefs[k]); if (!isNaN(x)) prefs[k] = $('#' + k).value = (v === 'py' ? x / PY : x * PY).toFixed(1); }
