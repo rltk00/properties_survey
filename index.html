@@ -124,6 +124,13 @@
     .map-widget.bottom { bottom: 28px; }
     calcite-navigation-logo { --calcite-navigation-logo-heading-text-size: 1rem; }
   }
+  /* 모바일 아래쪽 시트 (상세) — 손잡이를 끌어 높이 조절 */
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 30; height: var(--sheet-h, 45%); min-height: 120px; max-height: calc(100% - 48px);
+           display: flex; flex-direction: column; background: var(--app-surface); border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgb(0 0 0 / 18%); overflow: hidden; }
+  .sheet-handle { flex: none; display: grid; place-items: center; height: 22px; cursor: ns-resize; touch-action: none; }
+  .sheet-handle span { width: 40px; height: 4px; background: #c4c4c4; border-radius: 2px; }
+  .sheet #detail { flex: 1; min-height: 0; }
+  .mapwrap.sheet-open .map-widget.bottom { bottom: calc(var(--sheet-h, 45%) + 12px); }
   .age-ends { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
   .age-ends calcite-button { --calcite-button-text-color: var(--app-ink); }
   .place-list { display: grid; gap: 6px; margin-bottom: 12px; }
@@ -263,6 +270,9 @@
       <select id="dong" class="field"><option value="">읍면동</option></select>
     </div>
     <div id="status" class="toolbar-status"></div>
+    <div id="sheet" class="sheet" hidden>
+      <div class="sheet-handle" id="sheetHandle" title="끌어서 높이 조절"><span></span></div>
+    </div>
     <calcite-action-pad class="map-widget top" layout="vertical" expand-disabled>
       <calcite-action id="schoolBtn" icon="education" text="학군 (초등학교 통학구역)" scale="s"></calcite-action>
     </calcite-action-pad>
@@ -1206,9 +1216,13 @@ function showDetail(b) {
     const c = e.target.closest('.chip'); if (!c) return;
     selArea = c.dataset.a === '' ? null : +c.dataset.a; showDetail(b);
   };
+  if (isMobile()) {                     // 모바일: 지도 아래쪽 시트로 열고, 왼쪽 패널은 닫기
+    $('#start-panel').collapsed = true;
+    if ($('#sheet').hidden) { $('#sheet').hidden = false; $('.mapwrap').classList.add('sheet-open'); relayout(); }
+    return;
+  }
   const end = $('#end-panel');
   if (end.collapsed) { end.collapsed = false; relayout(); }
-  if (isMobile()) $('#start-panel').collapsed = true;   // 모바일: 상세가 열리면 왼쪽 패널은 닫기
 }
 /* ───────── 매물 보기: 네이버 부동산 매물 목록을 팝업 창으로 (같은 창 재사용) ─────────
    네이버 지도 URL의 layer 값은 화면 상태 JSON을 lz-string으로 압축한 것.
@@ -1263,6 +1277,7 @@ function closeDetail() {
   clearRoute();
   const end = $('#end-panel');
   if (!end.collapsed) { end.collapsed = true; relayout(); }
+  if (!$('#sheet').hidden) { $('#sheet').hidden = true; $('.mapwrap').classList.remove('sheet-open'); relayout(); }
   if (S.sel) { S.sel = null; render(); }
 }
 
@@ -1344,7 +1359,11 @@ const MOBILE_MQ = matchMedia('(max-width: 768px)');
 const isMobile = () => MOBILE_MQ.matches;
 function applyLayout() {              // 모바일은 패널을 지도 위에 겹쳐 열고(overlay), 데스크톱은 나란히(dock)
   $('#start-panel').displayMode = isMobile() ? 'overlay' : 'dock';
-  $('#end-panel').displayMode = 'dock';   // 오른쪽 상세는 모바일에서도 dock (지도 영역을 꽉 채워 전체화면처럼)
+  // 상세 패널: 데스크톱은 오른쪽 패널, 모바일은 지도 아래쪽 시트로 옮김
+  const detail = $('#detail'), wasOpen = S.sel != null;
+  if (isMobile() && detail.parentElement !== $('#sheet')) { $('#sheet').append(detail); $('#end-panel').collapsed = true; }
+  if (!isMobile() && detail.parentElement !== $('#end-panel')) { $('#end-panel').append(detail); $('#sheet').hidden = true; $('.mapwrap').classList.remove('sheet-open'); }
+  if (wasOpen) { const b = S.buildings.get(S.sel); if (b) showDetail(b); }
   if (isMobile()) $('#start-panel').collapsed = true;
   relayout();
 }
@@ -1468,6 +1487,16 @@ async function initMap() {
   });
 
   renderPlaces(); renderFavs();
+  // 아래쪽 시트 높이: 손잡이를 끌어 조절 (지도 높이 대비 비율로 저장)
+  const wrap = $('.mapwrap'), setSheetH = f => { prefs.sheetH = Math.min(0.9, Math.max(0.2, f)); wrap.style.setProperty('--sheet-h', `${(prefs.sheetH * 100).toFixed(1)}%`); };
+  setSheetH(prefs.sheetH || 0.45);
+  $('#sheetHandle').addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const h = $('#sheetHandle'); h.setPointerCapture(e.pointerId);
+    const move = ev => { const r = wrap.getBoundingClientRect(); setSheetH((r.bottom - ev.clientY) / r.height); };
+    const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); savePrefs(); relayout(); };
+    h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+  });
   applyLayout(); MOBILE_MQ.addEventListener('change', applyLayout);
   showKeyState(); updateHint(); render(); initMap();
 })();
