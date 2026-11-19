@@ -79,8 +79,8 @@
     --calcite-action-background-color: var(--app-ink); --calcite-action-background-color-hover: #3d3d3d; --calcite-action-background-color-press: #000;
     --calcite-action-text-color: #fff; --calcite-action-text-color-press: #fff; --calcite-icon-color: #fff;
   }
-  .cluster { display: grid; place-items: center; color: #fff; font: 700 13px var(--app-font); background: rgb(31 31 31 / 85%); border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 4px rgb(0 0 0 / 35%); cursor: pointer; }
-  .cluster:hover { background: #000; }
+  .cluster { display: grid; place-items: center; color: #fff; font: 700 13px var(--app-font); background: #000; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 4px rgb(0 0 0 / 35%); cursor: pointer; transition: background 120ms ease; }
+  .cluster:hover { background: #007ac2; }
   #map.labels-off .mk { display: none; }   /* 축소하면 마커(아이콘·이름) 숨김 */
   .me-dot { display: block; width: 14px; height: 14px; background: #007ac2; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 6px rgb(0 122 194 / 20%), 0 1px 3px rgb(0 0 0 / 40%); }
   /* 지도 마커: 아이콘 + 아래 레이블 */
@@ -631,7 +631,9 @@ function setHover(d, latLng) {
   if (d !== hoverDong) { hoverDong = d; setOutline('hover', d && d.code !== S.dong?.code ? d : null); }
   if (d) showHover(d.name, latLng); else hoverLabel?.setMap(null);
 }
+let overMarker = false;   // 가격·클러스터·마커 위에서는 동 hover를 띄우지 않음
 function onMouseMove(latLng) {
+  if (overMarker) return;
   const local = localDongAt(latLng.getLat(), latLng.getLng());
   if (local) { hoverSeq++; hoverNext = null; setHover(local, latLng); return; }   // 즉시
   if (!keys().vworld) return;
@@ -651,6 +653,7 @@ async function hoverLookup() {
 }
 function clearHover() { hoverSeq++; hoverNext = null; hoverDong = null; setOutline('hover', null); hoverLabel?.setMap(null); }
 async function onMapClick(latLng) {
+  if (overMarker) return;
   try {
     const d = await dongAt(latLng.getLat(), latLng.getLng());
     if (d && d.code !== S.dong?.code) selectDong(d.code);
@@ -1281,6 +1284,9 @@ async function initMap() {
   kakao.maps.event.addListener(map, 'mousemove', e => onMouseMove(e.latLng));
   kakao.maps.event.addListener(map, 'click', e => onMapClick(e.latLng));
   $('#map').addEventListener('mouseleave', clearHover);
+  const MARKER_SEL = '.cluster, .pin, .mk';
+  $('#map').addEventListener('mouseover', e => { if (e.target.closest(MARKER_SEL)) { overMarker = true; clearHover(); } });
+  $('#map').addEventListener('mouseout', e => { if (e.target.closest(MARKER_SEL) && !e.relatedTarget?.closest?.(MARKER_SEL)) overMarker = false; });
   ensureLandmarks().catch(() => {});
   drawFavs();
   if (prefs.dong) selectDong(prefs.dong, { fit: false });   // 마지막으로 보던 동 다시 열기
