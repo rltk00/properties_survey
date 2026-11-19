@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@esri/calcite-components@3.2.1/dist/calcite/calcite.css">
 <script type="module" src="https://cdn.jsdelivr.net/npm/@esri/calcite-components@3.2.1/dist/calcite/calcite.esm.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 <style>
   :root {
     --app-font: "Pretendard Variable", Pretendard, -apple-system, "Malgun Gothic", system-ui, sans-serif;
@@ -1143,9 +1144,19 @@ function showDetail(b) {
   const end = $('#end-panel');
   if (end.collapsed) { end.collapsed = false; relayout(); }
 }
-/* ───────── 매물 보기: 네이버 부동산 검색을 팝업 창으로 (같은 창 재사용) ───────── */
+/* ───────── 매물 보기: 네이버 부동산 매물 목록을 팝업 창으로 (같은 창 재사용) ─────────
+   네이버 지도 URL의 layer 값은 화면 상태 JSON을 lz-string으로 압축한 것.
+   [{"id":"article_list","searchParams":{"type":"CLUSTER","clusterId":"17/x/y"}}] → 건물이 속한 줌17 타일의 매물 목록 */
+function naverListingUrl(b) {
+  const z = 17, n = 2 ** z, r = b.lat * Math.PI / 180;
+  const x = Math.floor((b.lng + 180) / 360 * n);
+  const y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n);
+  const layer = LZString.compressToEncodedURIComponent(JSON.stringify([{ id: 'article_list', searchParams: { type: 'CLUSTER', clusterId: `${z}/${x}/${y}` } }]));
+  return `https://fin.land.naver.com/map?zoom=${z}&tradeTypes=A1-B1-B2&realEstateTypes=A01-A04-B01-A05-A06-A07-C02&layer=${layer}`;
+}
 function openListings(b) {
-  const url = `https://fin.land.naver.com/search?query=${encodeURIComponent(`${b.umd} ${b.name}`)}`;
+  const url = window.LZString && b.lat != null ? naverListingUrl(b)
+    : `https://fin.land.naver.com/search?query=${encodeURIComponent(`${b.umd} ${b.name}`)}`;
   const w = Math.min(1280, screen.availWidth - 80), h = Math.min(900, screen.availHeight - 80);
   const win = window.open(url, 'naverLand', `width=${w},height=${h},left=${(screen.availWidth - w) / 2},top=${(screen.availHeight - h) / 2}`);
   if (win) win.focus(); else window.open(url, '_blank');   // 팝업이 막히면 새 탭
