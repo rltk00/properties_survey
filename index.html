@@ -70,6 +70,8 @@
   /* 지도 위 표시 */
   .pin { display: inline-block; padding: 3px 8px; color: #fff; font: 600 12px var(--app-font); white-space: nowrap; background: var(--app-ink); border: 2px solid #fff; border-radius: 4px; box-shadow: 0 1px 4px rgb(0 0 0 / 30%); cursor: pointer; }
   .pin.OPST { background: var(--opst); }
+  .pin.stale { color: var(--app-ink); background: #fff; border-color: var(--app-ink); }   /* 최근 3개월 거래 없음 */
+  .pin.stale.sel { background: #ffd43b; }
   .pin-basis { margin-bottom: 8px; padding: 8px 10px; font-size: 13px; font-weight: 600; background: #fff8d6; border-radius: 4px; }
   .pin.other { color: #fff; background: #9a9a9a; border-style: dashed; }   /* 조건에 맞는 실거래 없음: 가장 최근 실거래(거래종류 첫 글자) */
   .pin.sel { color: var(--app-ink); background: #ffd43b; }
@@ -1140,6 +1142,15 @@ function updateHint() {
   parts.push($('#months').selectedOptions[0]?.textContent || '');
   $('#filter-block').description = parts.join(' · ');
 }
+/* 지도 가격 표시 = 조건에 맞는 거래 중 최근 3개월(계약일 기준) 평균. 없으면 마지막 거래를 흐리게 */
+const RECENT_MONTHS = 3;
+function recentAvg(ds) {
+  const c = new Date(); c.setMonth(c.getMonth() - RECENT_MONTHS);
+  const from = c.toISOString().slice(0, 10), rec = ds.filter(d => d.ymd >= from);
+  if (!rec.length) return null;
+  const avg = k => Math.round(rec.reduce((s, d) => s + d[k], 0) / rec.length / 100) * 100;   // 백만원 단위로 반올림
+  return { price: avg('price'), rent: Math.round(rec.reduce((s, d) => s + d.rent, 0) / rec.length), n: rec.length, from };
+}
 const PAGE_SIZE = 5, PAGE_GROUP = 5;   // 목록 5개씩, 페이지 번호는 5개씩 묶어 표시
 function pagerHtml(page, pages) {      // « 처음 · ‹ 이전 묶음 · 1 2 3 4 5 · 다음 묶음 › · 끝 »  (화살표는 6쪽 이상일 때만)
   const g0 = Math.floor((page - 1) / PAGE_GROUP) * PAGE_GROUP + 1, g1 = Math.min(pages, g0 + PAGE_GROUP - 1);
@@ -1161,10 +1172,11 @@ function render() {
     if (b.lat == null || (prefs.kind !== 'ALL' && b.kind !== prefs.kind) || !inDong(b, S.dong) || !ageOk(b)) continue;
     const ds = b.deals.filter(d => d.trade === prefs.trade && areaOk(d, rng) && priceOk(d));
     if (!ds.length) { if (b.deals.length) S.others.push({ b, latest: b.deals[0], other: true }); continue; }
-    S.view.push({ b, latest: ds[0], count: ds.length, dist: distances(b) });
+    S.view.push({ b, latest: ds[0], badge: recentAvg(ds), count: ds.length, dist: distances(b) });
   }
   const dk = (v, k) => v.dist.find(x => x.key === k)?.d ?? 1e12;
-  S.view.sort(prefs.sort === 'price' ? (a, b) => a.latest.price - b.latest.price || a.latest.rent - b.latest.rent
+  const pv = v => v.badge || v.latest;
+  S.view.sort(prefs.sort === 'price' ? (a, b) => pv(a).price - pv(b).price || pv(a).rent - pv(b).rent
     : prefs.sort === 'recent' ? (a, b) => b.latest.ymd.localeCompare(a.latest.ymd)
     : (a, b) => dk(a, prefs.sort) - dk(b, prefs.sort));
 
@@ -1181,8 +1193,8 @@ function render() {
     ? S.view.slice(from, from + PAGE_SIZE).map((v, j) => { const i = from + j; return `
       <div class="card${S.sel === v.b.id ? ' is-active' : ''}" data-i="${i}">
         <div class="card-title"><span class="badge ${v.b.kind}">${KIND_KO[v.b.kind]}</span>${esc(v.b.name)}${isFav(v.b.id) ? '<calcite-icon class="fav-mark" icon="star-f" scale="s"></calcite-icon>' : ''}</div>
-        <div class="card-price">${priceFull(v.latest)}</div>
-        <div class="card-meta">${v.latest.area}㎡ (${py(v.latest.area)}평) · ${v.latest.floor ?? '-'}층 · ${v.latest.ymd} · 거래 ${v.count}건</div>
+        <div class="card-price">${v.badge ? `최근 ${RECENT_MONTHS}개월 평균 ${priceFull(v.badge)} <span class="card-meta">(${v.badge.n}건)</span>` : `${priceFull(v.latest)} <span class="card-meta">(최근 ${RECENT_MONTHS}개월 거래 없음)</span>`}</div>
+        <div class="card-meta">마지막 거래 ${v.latest.ymd} · ${v.latest.area}㎡ (${py(v.latest.area)}평) · ${v.latest.floor ?? '-'}층 · 기간 내 ${v.count}건</div>
         <div class="card-meta">${v.dist.map(x => `${esc(x.name)} ${km(x.d)}`).join(' · ')}</div>
       </div>`; }).join('')
     : `<div class="empty-state"><calcite-icon icon="${S.dong ? 'filter' : 'map-pin'}" scale="l"></calcite-icon>${S.dong ? '조건에 맞는 실거래가 없습니다.' : '지도에서 동을 누르거나<br>상단에서 지역을 고르세요.'}</div>`;
@@ -1213,8 +1225,11 @@ function drawPins() {
     const el = document.createElement('span');
     el.className = `pin ${v.other ? 'other' : v.b.kind}${S.sel === v.b.id ? ' sel' : ''}`;
     const d = v.latest;
-    el.title = `${v.b.name}\n${v.other ? '조건에 맞는 실거래 없음 · 가장 최근 거래' : `${TRADE_KO[prefs.trade]} 조건에 맞는 가장 최근 거래`}: ${TRADE_KO[d.trade]} ${priceFull(d)} · ${d.area}㎡ · ${d.floor ?? '-'}층 · ${d.ymd}`;
-    el.textContent = v.other ? `${TRADE_KO[d.trade][0]} ${priceLabel(d)}` : priceLabel(d);
+    if (!v.other && !v.badge) el.classList.add('stale');   // 조건엔 맞지만 최근 3개월 거래 없음
+    el.title = `${v.b.name}\n` + (v.other ? `조건에 맞는 실거래 없음 · 가장 최근 ${TRADE_KO[d.trade]} ${priceFull(d)} (${d.ymd})`
+      : v.badge ? `최근 ${RECENT_MONTHS}개월 ${TRADE_KO[prefs.trade]} 평균 ${priceFull(v.badge)} (${v.badge.n}건)`
+      : `최근 ${RECENT_MONTHS}개월 거래 없음 · 마지막 ${priceFull(d)} (${d.ymd})`);
+    el.textContent = v.other ? `${TRADE_KO[d.trade][0]} ${priceLabel(d)}` : priceLabel(v.badge || d);
     el.onclick = () => select(v.b, false);
     overlays.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(v.b.lat, v.b.lng), content: el, yAnchor: 1 + k * 1.15, zIndex: S.sel === v.b.id ? 10 : 3 }));
   };
@@ -1280,8 +1295,10 @@ function showDetail(b) {
       <table class="t">${distances(b).map(x => `<tr><td>${esc(x.name)}</td><td class="num">${km(x.d)}</td></tr>`).join('')}</table>
     </calcite-block>
     <calcite-block heading="최근 실거래" icon-start="clock" collapsible expanded>
-      ${pinDeal ? `<div class="pin-basis"><span class="label-hint">지도 표시 기준</span> ${TRADE_KO[pinDeal.trade]} ${priceFull(pinDeal)} · ${pinDeal.area}㎡ · ${pinDeal.floor ?? '-'}층 · ${pinDeal.ymd}
-        <div class="label-hint">${pinView.other ? '현재 조건에 맞는 거래가 없어 가장 최근 거래로 표시' : `현재 조건(${[TRADE_KO[prefs.trade], areaRange()[0] || areaRange()[1] < Infinity ? '면적' : '', priceFull_() ? '' : '금액'].filter(Boolean).join('·')})에 맞는 가장 최근 거래`}</div></div>` : ''}
+      ${pinView ? `<div class="pin-basis"><span class="label-hint">지도 표시</span> ${
+          pinView.other ? `${TRADE_KO[pinDeal.trade]} ${priceFull(pinDeal)} <div class="label-hint">현재 조건에 맞는 거래가 없어 가장 최근 거래(${pinDeal.ymd})로 표시</div>`
+          : pinView.badge ? `최근 ${RECENT_MONTHS}개월 ${TRADE_KO[prefs.trade]} 평균 ${priceFull(pinView.badge)} <div class="label-hint">${pinView.badge.n}건 평균 · ${pinView.badge.from} 이후 계약 · 조건(면적·금액) 적용</div>`
+          : `${priceFull(pinDeal)} <div class="label-hint">최근 ${RECENT_MONTHS}개월 거래가 없어 마지막 거래(${pinDeal.ymd})로 표시</div>`}</div>` : ''}
       <table class="t">${['SALE','JEONSE','WOLSE'].map(t => { const x = latestOf(t);
         return `<tr><td>${TRADE_KO[t]}</td><td class="num">${x ? priceFull(x) : '-'}</td><td class="num">${x ? x.ymd : ''}</td></tr>`; }).join('')}</table>
       <div class="label-hint" style="margin-top:6px">위 표는 거래 종류별 가장 최근 거래(금액 조건과 무관)</div>
