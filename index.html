@@ -72,6 +72,21 @@
   .pin.OPST { background: var(--opst); }
   .pin.stale { color: var(--app-ink); background: #fff; border-color: var(--app-ink); }   /* 최근 3개월 거래 없음 */
   .pin.stale.sel { background: #ffd43b; }
+  /* 시세 추이 */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 10px; }
+  .stat { display: grid; gap: 1px; padding: 6px; background: #f7f7f7; border-radius: 4px; text-align: center; }
+  .stat .label-hint { font-size: 11px; }
+  .stat b { font-size: 13px; font-variant-numeric: tabular-nums; }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 4px; font-size: 12px; }
+  .legend i, .tip i { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; vertical-align: 0; }
+  .legend .label-hint { margin-left: auto; font-size: 11px; }
+  .chart-wrap { position: relative; }
+  .chart { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart .tg { stroke: #ececec; stroke-width: 1; }
+  .chart .tl { fill: var(--app-text-muted); font: 9px var(--app-font); }
+  .chart .xhair { stroke: #bdbdbd; stroke-width: 1; stroke-dasharray: 3 3; }
+  .vol-head { margin-top: 6px; font-size: 11px; }
+  .tip { position: absolute; top: 6px; z-index: 2; display: grid; gap: 2px; padding: 6px 8px; font-size: 12px; white-space: nowrap; background: #fff; border: 1px solid var(--app-border); border-radius: 4px; box-shadow: 0 2px 8px rgb(0 0 0 / 12%); pointer-events: none; }
   .pin-basis { margin-bottom: 8px; padding: 8px 10px; font-size: 13px; font-weight: 600; background: #fff8d6; border-radius: 4px; }
   .pin.other { color: #fff; background: #9a9a9a; border-style: dashed; }   /* 조건에 맞는 실거래 없음: 가장 최근 실거래(거래종류 첫 글자) */
   .pin.sel { color: var(--app-ink); background: #ffd43b; }
@@ -910,8 +925,11 @@ function locateMe({ quiet = false } = {}) {
 }
 
 /* ───────── 실거래 (구 단위로만 조회 → 지난 달 자료는 브라우저에 보관) ───────── */
-async function loadSgg(sgg, prog) {
-  const yms = monthsBack(+prefs.months), recent = new Set(yms.slice(0, 2)), tasks = [];
+// 기간 필터: 시세 그래프용으로 더 긴 기간을 받아 두어도 목록·표시는 선택한 기간만
+const periodFrom = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (+prefs.months - 1)); return d.toISOString().slice(0, 7); };
+const inPeriod = d => d.ymd.slice(0, 7) >= periodFrom();
+async function loadSgg(sgg, prog, months = +prefs.months) {
+  const yms = monthsBack(months), recent = new Set(yms.slice(0, 2)), tasks = [];
   for (const api of APIS) for (const ym of yms) {
     const k = `${api.key}|${sgg}|${ym}`;
     if (S.loaded.has(k)) continue;
@@ -1170,8 +1188,9 @@ function render() {
   S.view = []; S.others = [];   // others: 거래·면적 조건에 맞는 실거래가 없는 건물 → 가장 최근 실거래로 회색 표시
   if (S.dong) for (const b of S.buildings.values()) {
     if (b.lat == null || (prefs.kind !== 'ALL' && b.kind !== prefs.kind) || !inDong(b, S.dong) || !ageOk(b)) continue;
-    const ds = b.deals.filter(d => d.trade === prefs.trade && areaOk(d, rng) && priceOk(d));
-    if (!ds.length) { if (b.deals.length) S.others.push({ b, latest: b.deals[0], other: true }); continue; }
+    const inP = b.deals.filter(inPeriod);
+    const ds = inP.filter(d => d.trade === prefs.trade && areaOk(d, rng) && priceOk(d));
+    if (!ds.length) { if (inP.length) S.others.push({ b, latest: inP[0], other: true }); continue; }
     S.view.push({ b, latest: ds[0], badge: recentAvg(ds), count: ds.length, dist: distances(b) });
   }
   const dk = (v, k) => v.dist.find(x => x.key === k)?.d ?? 1e12;
@@ -1263,6 +1282,7 @@ function drawPins() {
 /* ───────── 상세 (오른쪽 패널) ───────── */
 function select(b, pan) {
   if (S.sel !== b.id) clearRoute();
+  if (S.sel !== b.id) trendArea = null;
   S.sel = b.id; selArea = null; dealMore = false; dealPage = 1;
   const idx = S.view.findIndex(v => v.b.id === b.id);   // 지도에서 고른 건물이 다른 쪽에 있으면 그 쪽으로
   if (idx >= 0) S.page = Math.floor(idx / PAGE_SIZE) + 1;
@@ -1270,10 +1290,11 @@ function select(b, pan) {
   if (pan && map) map.panTo(new kakao.maps.LatLng(b.lat, b.lng));
   showDetail(b);
   loadStops(b);
+  ensureHistory(b);
 }
 function showDetail(b) {
   const rng = areaRange();
-  const all = b.deals.filter(d => areaOk(d, rng));
+  const all = b.deals.filter(d => inPeriod(d) && areaOk(d, rng));
   const tradeDeals = all.filter(d => d.trade === prefs.trade);
   const areas = [...new Set(tradeDeals.map(d => d.area))].sort((x, y) => x - y);
   const rows = tradeDeals.filter(d => selArea == null || d.area === selArea);
@@ -1303,6 +1324,9 @@ function showDetail(b) {
         return `<tr><td>${TRADE_KO[t]}</td><td class="num">${x ? priceFull(x) : '-'}</td><td class="num">${x ? x.ymd : ''}</td></tr>`; }).join('')}</table>
       <div class="label-hint" style="margin-top:6px">위 표는 거래 종류별 가장 최근 거래(금액 조건과 무관)</div>
     </calcite-block>
+    <calcite-block heading="시세 추이" description="같은 평형 · 최근 3년" icon-start="graph-time-series" collapsible expanded>
+      <div id="trend" data-for="${esc(b.id)}"></div>
+    </calcite-block>
     <calcite-block heading="${TRADE_KO[prefs.trade]} 실거래 내역" description="${rows.length}건" icon-start="table" collapsible expanded>
       <div class="chips"><button class="chip ${selArea == null ? 'on' : ''}" data-a="">전체 면적</button>
         ${areas.map(a => `<button class="chip ${selArea === a ? 'on' : ''}" data-a="${a}">${a}㎡ · ${py(a)}평</button>`).join('')}</div>
@@ -1316,6 +1340,7 @@ function showDetail(b) {
       <div id="stops" data-for="${esc(b.id)}"><span class="label-hint">불러오는 중…</span></div>
     </calcite-block>`;
   if (keepStops) { $('#stops').replaceWith(keepStops); bindStops(); }
+  renderTrend(b);
   $('#favBtn').onclick = () => toggleFav(b);
   $('#listingBtn').onclick = () => openListings(b);
   panel.querySelector('.chips').onclick = e => {
@@ -1335,6 +1360,101 @@ function showDetail(b) {
   const end = $('#end-panel');
   if (end.collapsed) { end.collapsed = false; relayout(); }
 }
+/* ───────── 시세 추이: 같은 평형의 매매·전세 실거래 (최근 3년) ───────── */
+const TREND_MONTHS = 36, C_SALE = '#2a78d6', C_JEONSE = '#eb6834';   // 검증된 범주색 1·2번 (파랑·주황)
+const histReq = new Map();
+async function ensureHistory(b) {        // 3년치를 뒤에서 받아 두고, 다 받으면 그래프만 다시 그림
+  if (!histReq.has(b.sgg)) histReq.set(b.sgg, loadSgg(b.sgg, () => {}, TREND_MONTHS).catch(e => { histReq.delete(b.sgg); throw e; }));
+  const box = () => document.querySelector(`#trend[data-for="${CSS.escape(b.id)}"]`);
+  try { await histReq.get(b.sgg); } catch (e) { if (box()) box().insertAdjacentHTML('beforeend', `<div class="msg-error">${esc(e.message)}</div>`); return; }
+  trendLoaded.add(b.sgg);
+  if (S.sel === b.id && box()) renderTrend(b);
+}
+const trendLoaded = new Set();
+let trendArea = null;                    // 선택한 평형(반올림 ㎡), 건물이 바뀌면 초기화
+const monthKey = d => d.ymd.slice(0, 7);
+const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const avgOf = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+function monthsAgo(n) { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.toISOString().slice(0, 7); }
+const pct = (a, b) => a != null && b ? (a / b - 1) * 100 : null;
+const pctTxt = v => v == null ? '-' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
+
+function renderTrend(b) {
+  const box = document.querySelector(`#trend[data-for="${CSS.escape(b.id)}"]`); if (!box) return;
+  const from = monthsAgo(TREND_MONTHS - 1);
+  const deals = b.deals.filter(d => monthKey(d) >= from && d.trade !== 'WOLSE');
+  const groups = new Map();
+  for (const d of deals) { const k = Math.round(d.area); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
+  if (!groups.size) { box.innerHTML = `<span class="label-hint">${trendLoaded.has(b.sgg) ? '최근 3년 매매·전세 거래가 없습니다.' : '3년치 거래를 불러오는 중…'}</span>`; return; }
+  const keys = [...groups.keys()].sort((x, y) => x - y);
+  if (!groups.has(trendArea)) trendArea = keys.reduce((best, k) => groups.get(k).filter(d => d.trade === 'SALE').length > groups.get(best).filter(d => d.trade === 'SALE').length ? k : best, keys[0]);
+  const g = groups.get(trendArea), sale = g.filter(d => d.trade === 'SALE'), jeon = g.filter(d => d.trade === 'JEONSE');
+
+  // 요약 숫자 (매매)
+  const inRange = (arr, a, z) => arr.filter(d => monthKey(d) >= monthsAgo(z) && monthKey(d) <= monthsAgo(a)).map(d => d.price);
+  const r3 = avgOf(inRange(sale, 0, 2)), p3 = avgOf(inRange(sale, 3, 5)), y3 = avgOf(inRange(sale, 12, 14));
+  const high = sale.length ? Math.max(...sale.map(d => d.price)) : null;
+  const lastSale = sale[0], isHigh = lastSale && high && lastSale.price >= high;
+  const s6 = avgOf(inRange(sale, 0, 5)), j6 = avgOf(inRange(jeon, 0, 5));
+  const stat = (label, val, tip) => `<div class="stat" title="${esc(tip)}"><span class="label-hint">${label}</span><b>${val}</b></div>`;
+  const stats = [
+    stat('직전 3개월 대비', pctTxt(pct(r3, p3)), '최근 3개월 매매 평균 ÷ 그 전 3개월 평균'),
+    stat('1년 전 대비', pctTxt(pct(r3, y3)), '최근 3개월 매매 평균 ÷ 1년 전 같은 3개월 평균'),
+    stat(isHigh ? '신고가' : '최고가 대비', isHigh ? fmtMan(high) : pctTxt(pct(r3 ?? lastSale?.price, high)), `최근 3년 최고 매매가 ${high ? fmtMan(high) : '-'}`),
+    stat('전세가율', s6 && j6 ? `${Math.round(j6 / s6 * 100)}%` : '-', '최근 6개월 전세 평균 ÷ 매매 평균'),
+  ].join('');
+
+  // 차트: x = 월(36칸), y = 가격(억). 점 = 거래, 선 = 월 중앙값. 아래 별도 막대 = 월별 매매 건수
+  const W = 360, H = 170, L = 34, R = 8, T = 10, B = 18, VH = 34;
+  const months = Array.from({ length: TREND_MONTHS }, (_, i) => monthsAgo(TREND_MONTHS - 1 - i));
+  const xi = m => months.indexOf(m), cw = (W - L - R) / TREND_MONTHS, xc = i => L + cw * (i + 0.5);
+  const prices = g.map(d => d.price), lo = Math.min(...prices), hi = Math.max(...prices);
+  const step = [1000, 2000, 5000, 10000, 20000, 50000].find(s => (hi - lo) / s <= 5) || 100000;
+  const y0 = Math.floor(lo * 0.97 / step) * step, y1 = Math.ceil(hi * 1.03 / step) * step || step;
+  const y = v => T + (H - T - B) * (1 - (v - y0) / (y1 - y0 || 1));
+  const byMonth = arr => { const m = new Map(); for (const d of arr) { const k = monthKey(d); if (!m.has(k)) m.set(k, []); m.get(k).push(d.price); } return m; };
+  const sM = byMonth(sale), jM = byMonth(jeon);
+  const line = (mm, color) => { const pts = months.map((m, i) => mm.has(m) ? `${xc(i).toFixed(1)},${y(median(mm.get(m))).toFixed(1)}` : null).filter(Boolean);
+    return pts.length > 1 ? `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ''; };
+  const dots = (arr, color) => arr.map(d => `<circle cx="${(xc(xi(monthKey(d))) + (((d.floor || 0) * 7 + +d.ymd.slice(8)) % 10 / 10 - 0.5) * cw * 0.6).toFixed(1)}" cy="${y(d.price).toFixed(1)}" r="2.6" fill="${color}" fill-opacity="0.45"/>`).join('');
+  const grid = []; for (let v = y0; v <= y1 + 1; v += step) grid.push(`<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="tg"/><text x="${L - 4}" y="${(y(v) + 3.5).toFixed(1)}" class="tl" text-anchor="end">${(v / 10000).toFixed(step < 10000 ? 1 : 0)}</text>`);
+  const yearTicks = months.map((m, i) => m.endsWith('-01') ? `<text x="${xc(i).toFixed(1)}" y="${H - 4}" class="tl" text-anchor="middle">${m.slice(2, 4)}년</text>` : '').join('');
+  const vmax = Math.max(1, ...months.map(m => sM.get(m)?.length || 0));
+  const vol = months.map((m, i) => { const n = sM.get(m)?.length || 0; const h = n / vmax * (VH - 6);
+    return n ? `<rect x="${(xc(i) - cw * 0.35).toFixed(1)}" y="${(VH - h).toFixed(1)}" width="${(cw * 0.7).toFixed(1)}" height="${h.toFixed(1)}" rx="1" fill="#9a9a9a"/>` : ''; }).join('');
+
+  box.innerHTML = `
+    <div class="chips">${keys.map(k => `<button class="chip ${k === trendArea ? 'on' : ''}" data-k="${k}">${k}㎡ · ${py(k)}평</button>`).join('')}</div>
+    <div class="stats">${stats}</div>
+    <div class="legend"><span><i style="background:${C_SALE}"></i>매매</span><span><i style="background:${C_JEONSE}"></i>전세</span><span class="label-hint">점: 거래 · 선: 월 중앙값 · 단위: 억</span></div>
+    <div class="chart-wrap">
+      <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${trendArea}㎡ 매매·전세 시세 추이">
+        ${grid.join('')}${yearTicks}${dots(jeon, C_JEONSE)}${dots(sale, C_SALE)}${line(jM, C_JEONSE)}${line(sM, C_SALE)}
+        <line class="xhair" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>
+        <rect class="hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
+      </svg>
+      <div class="tip" hidden></div>
+    </div>
+    <div class="vol-head label-hint">월별 매매 건수</div>
+    <svg viewBox="0 0 ${W} ${VH}" class="chart vol">${vol}</svg>
+    ${trendLoaded.has(b.sgg) ? '' : '<div class="label-hint">3년치 거래를 불러오는 중… 다 받으면 그래프가 갱신됩니다.</div>'}`;
+  box.querySelector('.chips').onclick = e => { const c = e.target.closest('.chip'); if (c) { trendArea = +c.dataset.k; renderTrend(b); } };
+
+  // hover: 월 단위 십자선 + 툴팁
+  const svg = box.querySelector('svg.chart'), tip = box.querySelector('.tip'), xh = svg.querySelector('.xhair');
+  svg.querySelector('.hit').addEventListener('pointermove', e => {
+    const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+    const sp = p.matrixTransform(svg.getScreenCTM().inverse()), i = Math.max(0, Math.min(TREND_MONTHS - 1, Math.floor((sp.x - L) / cw))), m = months[i];
+    xh.setAttribute('x1', xc(i)); xh.setAttribute('x2', xc(i)); xh.setAttribute('visibility', 'visible');
+    const row = (name, mm, c) => `<div><i style="background:${c}"></i>${name} ${mm.has(m) ? `${fmtMan(Math.round(median(mm.get(m)) / 100) * 100)} <span class="label-hint">(${mm.get(m).length}건)</span>` : '<span class="label-hint">거래 없음</span>'}</div>`;
+    tip.innerHTML = `<b>${m.replace('-', '.')}</b>${row('매매', sM, C_SALE)}${row('전세', jM, C_JEONSE)}`;
+    tip.hidden = false;
+    const wrap = box.querySelector('.chart-wrap').getBoundingClientRect(), px = (xc(i) / W) * wrap.width;
+    tip.style.left = `${Math.min(wrap.width - tip.offsetWidth - 4, Math.max(4, px + 10))}px`;
+  });
+  svg.querySelector('.hit').addEventListener('pointerleave', () => { tip.hidden = true; xh.setAttribute('visibility', 'hidden'); });
+}
+
 /* ───────── 매물 보기: 네이버 부동산 매물 목록을 팝업 창으로 (같은 창 재사용) ─────────
    네이버 지도 URL의 layer 값은 화면 상태 JSON을 lz-string으로 압축한 것.
    [{"id":"article_list","searchParams":{"type":"CLUSTER","clusterId":"17/x/y"}}] → 건물이 속한 줌17 타일의 매물 목록 */
