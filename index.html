@@ -191,6 +191,10 @@
               <calcite-segmented-control-item value="WOLSE">월세</calcite-segmented-control-item>
             </calcite-segmented-control>
           </calcite-label>
+          <div>
+            <span class="label-text"><span id="priceTitle">금액</span> <span id="priceHint" class="label-hint"></span></span>
+            <calcite-slider id="price" min="0" max="300000" min-value="0" max-value="300000" step="1000" ticks="50000" label-ticks snap scale="s"></calcite-slider>
+          </div>
           <calcite-label>
             <span class="label-text">전용면적 <span id="areaHint" class="label-hint"></span></span>
             <div class="field-row">
@@ -339,7 +343,7 @@ const geoCache = store.get('geo', {});
 const saveGeo = () => store.set('geo', geoCache);
 
 /* 사용자 설정 (필터·기간·마지막 동·지도 위치) */
-const PREF_DEFAULT = { kind:'ALL', trade:'SALE', unit:'m2', amin:'', amax:'', months:'12', sort:'daycare', dong:null, view:null, school:false, ageMin:0, ageMax:40 };
+const PREF_DEFAULT = { kind:'ALL', trade:'SALE', unit:'m2', amin:'', amax:'', months:'12', sort:'daycare', dong:null, view:null, school:false, ageMin:0, ageMax:40, pmin:0, pmax:300000 };
 const prefs = { ...PREF_DEFAULT, ...store.get('prefs', {}) };
 if (Array.isArray(prefs.kinds)) { prefs.kind = prefs.kinds.length === 1 ? prefs.kinds[0] : 'ALL'; delete prefs.kinds; }
 const savePrefs = () => store.set('prefs', prefs);
@@ -1082,6 +1086,18 @@ async function savePlaceForm() {
 }
 
 /* ───────── 필터 · 렌더 ───────── */
+/* 금액: 0~30억(만원 단위, 30억 = 30억 이상), 천만원 단위로 움직임. 매매는 매매가, 전세·월세는 보증금 기준 */
+const PRICE_MAX = 300000;
+const priceFull_ = () => +prefs.pmin === 0 && +prefs.pmax >= PRICE_MAX;
+const priceOk = d => priceFull_() || (d.price >= +prefs.pmin && (+prefs.pmax >= PRICE_MAX || d.price <= +prefs.pmax));
+const eok = v => { const e = Math.floor(v / 10000), c = Math.round(v % 10000 / 1000); return e && c ? `${e}억 ${c}천` : e ? `${e}억` : c ? `${c}천만` : '0'; };
+const priceText = () => priceFull_() ? '전체' : `${eok(+prefs.pmin)} ~ ${+prefs.pmax >= PRICE_MAX ? '30억 이상' : eok(+prefs.pmax)}`;
+function syncPriceUI() {
+  const s = $('#price'); s.minValue = +prefs.pmin; s.maxValue = +prefs.pmax;
+  $('#priceTitle').textContent = `${prefs.trade === 'SALE' ? '매매가' : '보증금'} (억)`;
+  $('#priceHint').textContent = priceText();
+}
+
 /* 건축 연차: 0~40 (40 = 40년 이상). 건축연도를 모르는 건물은 '전체'일 때만 표시 */
 const AGE_MAX = 40;
 const AGE_BINS = { new: [0, 5, '신축'], semi: [6, 10, '준신축'], old: [11, AGE_MAX, '구축'] };   // From~To 구간
@@ -1118,6 +1134,7 @@ function updateHint() {
     ? (prefs.unit === 'py' ? `${lo.toFixed(1)} ~ ${hi < Infinity ? hi.toFixed(1) : ''}㎡` : `${py(lo)} ~ ${hi < Infinity ? py(hi) : ''}평`) : '';
   const parts = [prefs.kind === 'ALL' ? '아파트·오피스텔' : KIND_KO[prefs.kind], TRADE_KO[prefs.trade]];
   if (lo || hi < Infinity) parts.push(`${prefs.amin || 0}~${prefs.amax || ''}${prefs.unit === 'py' ? '평' : '㎡'}`);
+  if (!priceFull_()) parts.push(priceText());
   if (!ageFull()) parts.push(`연차 ${ageText()}`);
   parts.push($('#months').selectedOptions[0]?.textContent || '');
   $('#filter-block').description = parts.join(' · ');
@@ -1141,7 +1158,7 @@ function render() {
   S.view = []; S.others = [];   // others: 거래·면적 조건에 맞는 실거래가 없는 건물 → 가장 최근 실거래로 회색 표시
   if (S.dong) for (const b of S.buildings.values()) {
     if (b.lat == null || (prefs.kind !== 'ALL' && b.kind !== prefs.kind) || !inDong(b, S.dong) || !ageOk(b)) continue;
-    const ds = b.deals.filter(d => d.trade === prefs.trade && areaOk(d, rng));
+    const ds = b.deals.filter(d => d.trade === prefs.trade && areaOk(d, rng) && priceOk(d));
     if (!ds.length) { if (b.deals.length) S.others.push({ b, latest: b.deals[0], other: true }); continue; }
     S.view.push({ b, latest: ds[0], count: ds.length, dist: distances(b) });
   }
@@ -1151,7 +1168,7 @@ function render() {
     : (a, b) => dk(a, prefs.sort) - dk(b, prefs.sort));
 
   // 페이지: 조건이나 동이 바뀌면 1쪽으로, 선택한 건물이 다른 쪽에 있으면 그 쪽으로
-  const key = [S.dong?.code, prefs.kind, prefs.trade, prefs.amin, prefs.amax, prefs.unit, prefs.ageMin, prefs.ageMax, prefs.months, prefs.sort].join('|');
+  const key = [S.dong?.code, prefs.kind, prefs.trade, prefs.amin, prefs.amax, prefs.unit, prefs.ageMin, prefs.ageMax, prefs.pmin, prefs.pmax, prefs.months, prefs.sort].join('|');
   if (key !== S.pageKey) { S.pageKey = key; S.page = 1; }
   const pages = Math.max(1, Math.ceil(S.view.length / PAGE_SIZE));
   S.page = Math.min(Math.max(1, S.page || 1), pages);
@@ -1490,7 +1507,10 @@ async function initMap() {
   $('#months').value = prefs.months; fillSort();
 
   onSeg('#kind', v => { prefs.kind = v; savePrefs(); updateHint(); render(); });
-  onSeg('#trade', v => { prefs.trade = v; savePrefs(); updateHint(); render(); const b = S.buildings.get(S.sel); if (b) showDetail(b); });
+  onSeg('#trade', v => { prefs.trade = v; savePrefs(); syncPriceUI(); updateHint(); render(); const b = S.buildings.get(S.sel); if (b) showDetail(b); });
+  syncPriceUI();
+  $('#price').labelFormatter = (v, type) => type === 'tick' ? (v >= PRICE_MAX ? '30+' : String(v / 10000)) : undefined;   // 눈금 단위: 억
+  $('#price').addEventListener('calciteSliderInput', e => { prefs.pmin = e.target.minValue; prefs.pmax = e.target.maxValue; savePrefs(); syncPriceUI(); updateHint(); render(); });
   syncAgeUI();
   const onAge = () => { savePrefs(); syncAgeUI(); updateHint(); render(); };
   $('#age').addEventListener('calciteSliderInput', e => { prefs.ageMin = e.target.minValue; prefs.ageMax = e.target.maxValue; onAge(); });
