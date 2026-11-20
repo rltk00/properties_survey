@@ -70,6 +70,7 @@
   /* 지도 위 표시 */
   .pin { display: inline-block; padding: 3px 8px; color: #fff; font: 600 12px var(--app-font); white-space: nowrap; background: var(--app-ink); border: 2px solid #fff; border-radius: 4px; box-shadow: 0 1px 4px rgb(0 0 0 / 30%); cursor: pointer; }
   .pin.OPST { background: var(--opst); }
+  .pin-basis { margin-bottom: 8px; padding: 8px 10px; font-size: 13px; font-weight: 600; background: #fff8d6; border-radius: 4px; }
   .pin.other { color: #fff; background: #9a9a9a; border-style: dashed; }   /* 조건에 맞는 실거래 없음: 가장 최근 실거래(거래종류 첫 글자) */
   .pin.sel { color: var(--app-ink); background: #ffd43b; }
   .hover-tip { display: inline-block; padding: 3px 8px; color: #000; font: 600 12px var(--app-font); background: #fff; border: 1px solid #000; border-radius: 2px; white-space: nowrap; }
@@ -1206,13 +1207,16 @@ const CLUSTER_LEVEL = 6, CLUSTER_PX = 64;
 function drawPins() {
   if (!map) return;
   overlays.forEach(o => o.setMap(null)); overlays = [];
+  const stack = new Map();   // 같은 좌표(같은 지번 등)에 겹친 건물은 위로 쌓아 서로 가리지 않게
   const pin = v => {
+    const pos = `${v.b.lat.toFixed(6)},${v.b.lng.toFixed(6)}`, k = stack.get(pos) || 0; stack.set(pos, k + 1);
     const el = document.createElement('span');
     el.className = `pin ${v.other ? 'other' : v.b.kind}${S.sel === v.b.id ? ' sel' : ''}`;
-    el.title = v.other ? `${v.b.name} · 조건에 맞는 실거래 없음 (최근 ${TRADE_KO[v.latest.trade]} ${v.latest.ymd})` : v.b.name;
-    el.textContent = v.other ? `${TRADE_KO[v.latest.trade][0]} ${priceLabel(v.latest)}` : priceLabel(v.latest);
+    const d = v.latest;
+    el.title = `${v.b.name}\n${v.other ? '조건에 맞는 실거래 없음 · 가장 최근 거래' : `${TRADE_KO[prefs.trade]} 조건에 맞는 가장 최근 거래`}: ${TRADE_KO[d.trade]} ${priceFull(d)} · ${d.area}㎡ · ${d.floor ?? '-'}층 · ${d.ymd}`;
+    el.textContent = v.other ? `${TRADE_KO[d.trade][0]} ${priceLabel(d)}` : priceLabel(d);
     el.onclick = () => select(v.b, false);
-    overlays.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(v.b.lat, v.b.lng), content: el, yAnchor: 1, zIndex: S.sel === v.b.id ? 10 : 3 }));
+    overlays.push(new kakao.maps.CustomOverlay({ map, position: new kakao.maps.LatLng(v.b.lat, v.b.lng), content: el, yAnchor: 1 + k * 1.15, zIndex: S.sel === v.b.id ? 10 : 3 }));
   };
   const all = [...S.view, ...(S.others || [])];
   if (map.getLevel() < CLUSTER_LEVEL) { all.forEach(pin); return; }
@@ -1258,6 +1262,7 @@ function showDetail(b) {
   const tradeDeals = all.filter(d => d.trade === prefs.trade);
   const areas = [...new Set(tradeDeals.map(d => d.area))].sort((x, y) => x - y);
   const rows = tradeDeals.filter(d => selArea == null || d.area === selArea);
+  const pinView = S.view.find(v => v.b.id === b.id) || (S.others || []).find(v => v.b.id === b.id), pinDeal = pinView?.latest;
   const dealPages = Math.max(1, Math.ceil(rows.length / DEAL_PAGE));
   dealPage = Math.min(Math.max(1, dealPage), dealPages);
   const dealRows = dealMore ? rows.slice((dealPage - 1) * DEAL_PAGE, dealPage * DEAL_PAGE) : rows.slice(0, DEAL_FIRST);
@@ -1275,8 +1280,11 @@ function showDetail(b) {
       <table class="t">${distances(b).map(x => `<tr><td>${esc(x.name)}</td><td class="num">${km(x.d)}</td></tr>`).join('')}</table>
     </calcite-block>
     <calcite-block heading="최근 실거래" icon-start="clock" collapsible expanded>
+      ${pinDeal ? `<div class="pin-basis"><span class="label-hint">지도 표시 기준</span> ${TRADE_KO[pinDeal.trade]} ${priceFull(pinDeal)} · ${pinDeal.area}㎡ · ${pinDeal.floor ?? '-'}층 · ${pinDeal.ymd}
+        <div class="label-hint">${pinView.other ? '현재 조건에 맞는 거래가 없어 가장 최근 거래로 표시' : `현재 조건(${[TRADE_KO[prefs.trade], areaRange()[0] || areaRange()[1] < Infinity ? '면적' : '', priceFull_() ? '' : '금액'].filter(Boolean).join('·')})에 맞는 가장 최근 거래`}</div></div>` : ''}
       <table class="t">${['SALE','JEONSE','WOLSE'].map(t => { const x = latestOf(t);
         return `<tr><td>${TRADE_KO[t]}</td><td class="num">${x ? priceFull(x) : '-'}</td><td class="num">${x ? x.ymd : ''}</td></tr>`; }).join('')}</table>
+      <div class="label-hint" style="margin-top:6px">위 표는 거래 종류별 가장 최근 거래(금액 조건과 무관)</div>
     </calcite-block>
     <calcite-block heading="${TRADE_KO[prefs.trade]} 실거래 내역" description="${rows.length}건" icon-start="table" collapsible expanded>
       <div class="chips"><button class="chip ${selArea == null ? 'on' : ''}" data-a="">전체 면적</button>
