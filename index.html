@@ -1328,7 +1328,7 @@ function showDetail(b) {
       <div id="trend" data-for="${esc(b.id)}"></div>
     </calcite-block>
     <calcite-block heading="${TRADE_KO[prefs.trade]} 실거래 내역" description="${rows.length}건" icon-start="table" collapsible expanded>
-      <div class="chips"><button class="chip ${selArea == null ? 'on' : ''}" data-a="">전체 면적</button>
+      <div class="chips" id="dealChips"><button class="chip ${selArea == null ? 'on' : ''}" data-a="">전체 면적</button>
         ${areas.map(a => `<button class="chip ${selArea === a ? 'on' : ''}" data-a="${a}">${a}㎡ · ${py(a)}평</button>`).join('')}</div>
       <table class="t"><tr><th>계약일</th><th>전용</th><th class="num">층</th><th class="num">가격</th></tr>
       ${dealRows.map(x => `<tr><td>${x.ymd}</td><td>${x.area}㎡</td><td class="num">${x.floor ?? '-'}</td>
@@ -1343,7 +1343,7 @@ function showDetail(b) {
   renderTrend(b);
   $('#favBtn').onclick = () => toggleFav(b);
   $('#listingBtn').onclick = () => openListings(b);
-  panel.querySelector('.chips').onclick = e => {
+  $('#dealChips').onclick = e => {   // (시세 추이 블록에도 .chips가 있어 id로 구분)
     const c = e.target.closest('.chip'); if (!c) return;
     selArea = c.dataset.a === '' ? null : +c.dataset.a; dealMore = false; dealPage = 1; showDetail(b);
   };
