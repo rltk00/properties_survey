@@ -1399,11 +1399,11 @@ function renderTrend(b) {
   const s6 = avgOf(inRange(sale, 0, 5)), j6 = avgOf(inRange(jeon, 0, 5));
   const stat = (label, val, tip, tag = '') => `<div class="stat" title="${esc(tip)}"><span class="label-hint">${label}</span><b>${val}</b>${tag}</div>`;
   const stats = [
-    stat('직전 3개월 대비', pctTxt(pct(r3, p3)), '최근 3개월 매매 평균 ÷ 그 전 3개월 평균'),
-    stat('1년 전 대비', pctTxt(pct(r3, y3)), '최근 3개월 매매 평균 ÷ 1년 전 같은 3개월 평균'),
+    stat('3개월 평균 vs 직전', pctTxt(pct(r3, p3)), '최근 3개월 매매 평균 ÷ 그 전 3개월 평균'),
+    stat('3개월 평균 vs 1년 전', pctTxt(pct(r3, y3)), '최근 3개월 매매 평균 ÷ 1년 전 같은 3개월 평균'),
     // 항상 같은 기준(최근 3개월 평균 ÷ 3년 최고가). 가장 최근 거래가 3년 최고가를 기록했으면 '신고가' 표시만 덧붙임
-    stat('3년 최고가 대비', pctTxt(pct(r3, high)), `최근 3개월 매매 평균 ÷ 최근 3년 최고 매매가(${high ? fmtMan(high) : '-'})`,
-      isHigh ? `<span class="stat-tag" title="가장 최근 매매(${lastSale.ymd})가 3년 최고가">신고가</span>` : ''),
+    stat('3개월 평균 vs 최고가', pctTxt(pct(r3, high)), `최근 3개월 매매 평균 ÷ 최근 3년 최고 매매가(${high ? fmtMan(high) : '-'})`,
+      isHigh ? `<span class="stat-tag" title="가장 최근 매매(${lastSale.ymd}, ${fmtMan(lastSale.price)})가 3년 최고가">최근 거래 신고가</span>` : ''),
     stat('전세가율', s6 && j6 ? `${Math.round(j6 / s6 * 100)}%` : '-', '최근 6개월 전세 평균 ÷ 매매 평균'),
   ].join('');
 
