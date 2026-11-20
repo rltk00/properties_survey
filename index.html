@@ -1621,7 +1621,7 @@ async function initMap() {
   // 초기 화면: 마지막으로 보던 위치 → 없으면 내 위치 → 그것도 안 되면 기본 위치
   const [lat, lng, level] = prefs.view || [37.27, 127.1, 7];
   map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(lat, lng), level });
-  locateMe({ quiet: true });   // 첫 화면: 위치 권한이 있으면 내 위치, 없으면 마지막으로 보던 위치 (동 선택은 복원하지 않음)
+  // 첫 화면: 마지막으로 보던 지도 위치 (동 선택은 복원하지 않음, 내 위치는 버튼으로만)
   const LABEL_MAX_LEVEL = 6;   // 이보다 축소하면 마커(아이콘·이름)를 숨김
   const syncLabels = () => $('#map').classList.toggle('labels-off', map.getLevel() > LABEL_MAX_LEVEL);
   kakao.maps.event.addListener(map, 'zoom_changed', syncLabels); syncLabels();
